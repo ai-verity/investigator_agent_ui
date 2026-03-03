@@ -1,0 +1,402 @@
+@if (isAdmin) {
+  <!-- Admin/Agent: List + Detail view -->
+  <div class="dashboard admin-dashboard">
+    <h2 class="page-title">{{ title }}</h2>
+
+    <div class="list-detail-layout">
+      <div class="left-panel">
+        <div class="filters-section">
+          <div class="filters-row">
+            <div class="filter-group">
+              <label for="filterPermitType" class="filter-label">Permit/Application Type</label>
+              <select
+                id="filterPermitType"
+                class="filter-select filter-select-inline"
+                [ngModel]="filterPermitType()"
+                (ngModelChange)="filterPermitType.set($event)"
+              >
+                @for (opt of permitTypeOptions; track opt) {
+                  <option [value]="opt">{{ opt || 'All' }}</option>
+                }
+              </select>
+              <span class="filter-chevron">▼</span>
+            </div>
+            <span class="filter-divider">|</span>
+            <div class="filter-group">
+              <label for="filterZoningType" class="filter-label">Zoning Type</label>
+              <select
+                id="filterZoningType"
+                class="filter-select filter-select-inline"
+                [ngModel]="filterZoningType()"
+                (ngModelChange)="filterZoningType.set($event)"
+              >
+                @for (opt of zoningTypeOptions; track opt) {
+                  <option [value]="opt">{{ opt || 'All' }}</option>
+                }
+              </select>
+              <span class="filter-chevron">▼</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="list-section">
+          <div class="records-list">
+            @for (record of filteredRecords(); track record.permitId) {
+              <div
+                class="record-card"
+                [class.selected]="selectedRecord()?.permitId === record.permitId"
+                (click)="selectRecord(record)"
+              >
+                <div class="record-left">
+                  <div class="record-field">
+                    <dt>Permit Id:</dt>
+                    <dd>{{ record.permitId }}</dd>
+                  </div>
+                  <div class="record-field">
+                    <dt>Applicant:</dt>
+                    <dd>{{ record.applicant }}</dd>
+                  </div>
+                  <div class="record-field">
+                    <dt>Address:</dt>
+                    <dd>{{ record.address }}</dd>
+                  </div>
+                  <div class="record-field">
+                    <dt>Zoning Type:</dt>
+                    <dd>{{ record.zoningType }}</dd>
+                  </div>
+                </div>
+                <div class="record-right">
+                  <div class="record-field">
+                    <dt>Status:</dt>
+                    <dd><span class="status" [ngClass]="getStatusClass(record.status)">{{ record.status }}</span></dd>
+                  </div>
+                  <div class="record-field">
+                    <dt>Days Elapsed:</dt>
+                    <dd>{{ record.daysElapsed }} days</dd>
+                  </div>
+                  <div class="record-field">
+                    <dt>Permit Type:</dt>
+                    <dd>{{ record.permitType }}</dd>
+                  </div>
+                  <div class="record-field">
+                    <dt>Submitted Date:</dt>
+                    <dd>{{ record.submittedDate }}</dd>
+                  </div>
+                </div>
+              </div>
+            }
+            @if (filteredRecords().length === 0) {
+              <p class="no-records">No records match the filters.</p>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div class="right-panel">
+        <div class="detail-section">
+          @if (selectedRecord(); as record) {
+            <div class="detail-split" [class.dynamic-open]="activeDetailContent() >= 0">
+              <div class="ai-analysis-panel">
+                <div class="ai-analysis-header">
+                  <h3 class="ai-analysis-title">AI ANALYSIS</h3>
+                  <button
+                    type="button"
+                    class="ai-analysis-feedback"
+                    [attr.title]="feedbackTooltip"
+                    (click)="openFeedbackModal()"
+                  >Feedback <span class="feedback-info-badge" aria-hidden="true">i</span></button>
+                </div>
+
+                <div class="ai-summary-box">
+                  <div class="ai-summary-heading">AI Summary:</div>
+                  <ul class="ai-summary-list">
+                    @for (issue of detectedIssues(); track issue) {
+                      <li>– {{ issue }}</li>
+                    }
+                  </ul>
+                </div>
+
+                <div class="ai-analysis-nav">
+                  @for (btn of otherDetailButtons; track btn.index) {
+                    <button
+                      type="button"
+                      class="ai-nav-btn"
+                      [class.active]="activeDetailContent() === btn.index"
+                      (click)="setDetailContent(btn.index)"
+                    >
+                      {{ btn.label }}
+                    </button>
+                  }
+                </div>
+
+                <div class="officer-analysis-section">
+                  <h3 class="officer-analysis-title">Officer Analysis</h3>
+                  <label class="officer-analysis-label" for="officerComments">Comments:</label>
+                  <textarea
+                    id="officerComments"
+                    class="officer-analysis-comments"
+                    [(ngModel)]="officerComments"
+                    placeholder="Enter your analysis comments..."
+                    rows="4"
+                  ></textarea>
+                </div>
+
+                @if ((decisionConfirmed() && decisionConfirmedChoice() === 'approve') || record.status === 'Approved') {
+                  <div class="decision-confirmation-summary">
+                    <div class="decision-confirmation-header">DECISION CONFIRMED</div>
+                    <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                    <div class="decision-confirmation-line">Decision: Approved</div>
+                    <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
+                    <ul class="decision-confirmation-actions">
+                      <li>✓ Digital Certificate Generated</li>
+                      <li>✓ Applicant Notified</li>
+                      <li>✓ Audit Log Recorded</li>
+                      <li>✓ SLA Closed</li>
+                    </ul>
+                  </div>
+                } @else if ((decisionConfirmed() && decisionConfirmedChoice() === 'revision') || record.status === 'Requested Revision') {
+                  <div class="decision-confirmation-summary">
+                    <div class="decision-confirmation-header">DECISION CONFIRMED</div>
+                    <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                    <div class="decision-confirmation-line">Decision: Revision Requested</div>
+                    <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
+                    <div class="revision-details-section">
+                      <div class="decision-confirmation-header revision-details-header">REVISION DETAILS</div>
+                      <div class="revision-details-sub">Issues Flagged:</div>
+                      <ul class="decision-confirmation-actions">
+                        @for (issue of detectedIssues(); track issue) {
+                          <li>✓ {{ issue }}</li>
+                        }
+                      </ul>
+                      <div class="revision-details-sub">Officer Notes:</div>
+                      <div class="revision-officer-notes">{{ decisionRevisionComment() || 'Please revise structural drawings to comply with 35 ft height limit and include additional fire exit.' }}</div>
+                    </div>
+                  </div>
+                } @else if ((decisionConfirmed() && decisionConfirmedChoice() === 'reject') || record.status === 'Rejected') {
+                  <div class="decision-confirmation-summary">
+                    <div class="decision-confirmation-header">DECISION CONFIRMED</div>
+                    <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                    <div class="decision-confirmation-line">Decision: Rejected</div>
+                    <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
+                    <div class="revision-details-section">
+                      <div class="decision-confirmation-header revision-details-header">REJECTION SUMMARY</div>
+                      <div class="revision-details-sub">Primary Reasons:</div>
+                      <ul class="decision-confirmation-actions">
+                        @for (issue of detectedIssues(); track issue) {
+                          <li>✓ {{ issue }}</li>
+                        }
+                      </ul>
+                      <div class="revision-details-sub">Officer Notes:</div>
+                      <div class="revision-officer-notes">{{ decisionRevisionComment() || 'Application does not comply with floodplain development standards under LDC Section 25-7' }}</div>
+                    </div>
+                  </div>
+                } @else {
+                <div class="decision-section">
+                  <h3 class="decision-title">Decision</h3>
+                  <div class="decision-options">
+                    <label class="radio-option">
+                      <input
+                        type="radio"
+                        name="decisionChoice"
+                        value="approve"
+                        [checked]="decisionChoice() === 'approve'"
+                        (change)="decisionChoice.set('approve')"
+                      />
+                      <span>Approve</span>
+                    </label>
+                    <label class="radio-option">
+                      <input
+                        type="radio"
+                        name="decisionChoice"
+                        value="reject"
+                        [checked]="decisionChoice() === 'reject'"
+                        (change)="decisionChoice.set('reject')"
+                      />
+                      <span>Reject</span>
+                    </label>
+                    <label class="radio-option">
+                      <input
+                        type="radio"
+                        name="decisionChoice"
+                        value="revision"
+                        [checked]="decisionChoice() === 'revision'"
+                        (change)="decisionChoice.set('revision')"
+                      />
+                      <span>Request Revision</span>
+                    </label>
+                  </div>
+                  @if (decisionChoice() === 'reject' || decisionChoice() === 'revision') {
+                    <div class="decision-comment-wrap">
+                      <label class="officer-analysis-label" for="decisionComment">Optional comment:</label>
+                      <textarea
+                        id="decisionComment"
+                        class="officer-analysis-comments"
+                        [(ngModel)]="decisionComment"
+                        placeholder="Add reason or instructions..."
+                        rows="3"
+                      ></textarea>
+                    </div>
+                  }
+                  <button type="button" class="decision-confirm-btn" [disabled]="!decisionChoice()" (click)="confirmDecision()">Confirm Decision</button>
+                </div>
+                }
+              </div>
+
+              @if (activeDetailContent() >= 0) {
+                <div class="dynamic-content-panel">
+                  <button type="button" class="dynamic-panel-close" (click)="closeDynamicPanel()" aria-label="Close">×</button>
+
+                  @if (activeDetailContent() === 0) {
+                    <div class="dynamic-panel-content">
+                      <h3 class="tab-content-title">Overview Data</h3>
+                      <div class="overview-data-panel">
+                        <div class="overview-data-line">Built-up Area: {{ record.proposedBuiltUpArea ?? 0 | number }} sq ft</div>
+                      <div class="overview-data-line">Proposed Height: {{ record.proposedHeightFt ?? 0 }} ft</div>
+                      <div class="overview-data-line">Allowed Height: {{ record.allowedHeightFt ?? 0 }} ft</div>
+                      <div class="overview-data-line">Impervious Cover: {{ record.imperviousCoverPct ?? 0 }}%</div>
+                      </div>
+                    </div>
+                  }
+
+                  @if (activeDetailContent() === 1) {
+                    <div class="dynamic-panel-content">
+                      <h3 class="tab-content-title">Scope of Work</h3>
+                      <p class="scope-applicant-label">Full text submitted by applicant</p>
+                      <div class="scope-text-block">
+                        <textarea
+                          id="scopeData"
+                          class="scope-textarea scope-textarea-readonly"
+                          placeholder="Scope of work details will appear here."
+                          rows="8"
+                          readonly
+                          [ngModel]="record.scopeOfWork ?? ''"
+                        ></textarea>
+                      </div>
+                    </div>
+                  }
+
+                  @if (activeDetailContent() === 2) {
+                    <div class="dynamic-panel-content">
+                      <h3 class="tab-content-title">Blueprint Viewer</h3>
+                      <div class="blueprint-zoom-controls">
+                        <button type="button" class="blueprint-zoom-btn" (click)="blueprintZoomIn()" title="Zoom in">+</button>
+                        <span class="blueprint-zoom-level">{{ (blueprintZoom() * 100) | number:'1.0-0' }}%</span>
+                        <button type="button" class="blueprint-zoom-btn" (click)="blueprintZoomOut()" title="Zoom out">−</button>
+                        <button type="button" class="blueprint-zoom-btn" (click)="blueprintZoomReset()" title="Reset">Reset</button>
+                      </div>
+                      <p class="blueprint-viewer-hint">Drag to pan. AI-highlighted areas (height, setback, exits).</p>
+                      <div
+                        class="blueprint-viewport"
+                        (mousedown)="onBlueprintMouseDown($event)"
+                        (mouseup)="onBlueprintMouseUp()"
+                        (mouseleave)="onBlueprintMouseUp()"
+                        [class.blueprint-dragging]="blueprintDragging"
+                      >
+                        <div
+                          class="blueprint-content"
+                          [style.transform]="getBlueprintTransform()"
+                        >
+                          <div class="blueprint-placeholder">
+                            <span>Blueprint document</span>
+                            <span class="blueprint-placeholder-sub">Zoom / Pan enabled</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  }
+
+                  @if (activeDetailContent() === 3) {
+                    <div class="dynamic-panel-content">
+                      <h3 class="tab-content-title">Site Images</h3>
+                      <div class="site-images-thumbs">
+                        @for (i of [1, 2, 3]; track i) {
+                          <button
+                            type="button"
+                            class="site-image-thumb"
+                            (click)="openImageEnlarged(i)"
+                          >
+                            Image {{ i }}
+                          </button>
+                        }
+                      </div>
+                      <p class="site-images-hint">Click to enlarge</p>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            @if (activeDetailContent() === 3 && siteImagesEnlarged(); as imgIndex) {
+              <div class="image-enlarge-backdrop" (click)="closeImageEnlarged()">
+                <div class="image-enlarge-content" (click)="$event.stopPropagation()">
+                  <button type="button" class="image-enlarge-close" (click)="closeImageEnlarged()" aria-label="Close">×</button>
+                  <div class="image-enlarge-placeholder">Image {{ imgIndex }} – Enlarged view</div>
+                </div>
+              </div>
+            }
+          } @else {
+            <p class="detail-placeholder">Select a record from the list to view details.</p>
+          }
+        </div>
+      </div>
+    </div>
+
+    @if (feedbackModalOpen()) {
+      <div class="feedback-modal-backdrop" (click)="closeFeedbackModal()">
+        <div class="feedback-modal" (click)="$event.stopPropagation()">
+          <button type="button" class="feedback-modal-close" (click)="closeFeedbackModal()" aria-label="Close">×</button>
+          <h3 class="feedback-modal-title">Provide Feedback to AI Agent</h3>
+          <p class="feedback-modal-prompt">What is incorrect or needs improvement?</p>
+          <textarea
+            class="feedback-modal-input"
+            [(ngModel)]="feedbackText"
+            placeholder="Enter your feedback..."
+            rows="5"
+          ></textarea>
+          <div class="feedback-modal-actions">
+            <button type="button" class="feedback-btn feedback-btn-submit" (click)="submitFeedback()">Submit Feedback</button>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+} @else {
+  <!-- User: table of records – click a row to open same New Application screen with all steps pre-populated -->
+  <div class="dashboard user-dashboard">
+    <h2 class="page-title">{{ title }}</h2>
+    <p class="user-dashboard-hint">Click a record to open the View Application page with pre-populated data.</p>
+
+    <div class="list-detail-layout">
+      <div class="left-panel left-panel-full">
+        <div class="list-section">
+          <div class="table-wrap">
+            <table class="permits-table">
+              <thead>
+                <tr>
+                  <th>Permit ID</th>
+                  <th>Address</th>
+                  <th>Permit Type</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (permit of permits; track permit.permitId) {
+                  <tr (click)="selectPermitAsUser(permit)">
+                    <td>{{ permit.permitId }}</td>
+                    <td>{{ permit.address }}</td>
+                    <td>{{ permit.type }}</td>
+                    <td>
+                      <span class="status" [ngClass]="getStatusClass(permit.status)">
+                        {{ permit.status }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+}

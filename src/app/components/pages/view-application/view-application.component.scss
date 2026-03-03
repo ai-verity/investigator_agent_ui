@@ -1,0 +1,50 @@
+@use '../applications/applications.component.scss' as *;
+
+.view-application {
+  width: 100%;
+  max-width: min(96vw, 1600px);
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.no-record-message {
+  margin: 0 0 1.5rem;
+  color: #64748b;
+  font-size: 1rem;
+}
+
+.view-form {
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+
+    .form-label {
+      font-weight: 600;
+      color: #374151;
+      font-size: 0.95rem;
+    }
+  }
+
+  .view-value {
+    color: #1f2937;
+    font-size: 1rem;
+  }
+
+  .view-value-block {
+    padding: 1rem;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    white-space: pre-wrap;
+    color: #374151;
+    line-height: 1.5;
+  }
+}
+
+.view-mode-placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}

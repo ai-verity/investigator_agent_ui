@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Angular cache and build
+.angular/
+dist/
+*.ngfactory.ts
+*.ngsummary.json
+
+# Build outputs
+*.js.map
+*.tsbuildinfo
+
+# IDE and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Logs and temp
+*.log
+npm-debug.log*
+.npm
+tmp/
+temp/
+
+# Test and coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Optional: uncomment if you don't want to commit lockfile
+# package-lock.json

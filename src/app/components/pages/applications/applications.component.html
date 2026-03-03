@@ -1,0 +1,458 @@
+<div class="applications" [class.step3-active]="currentStep === 3">
+  <h2 class="screen-title">{{ getStepTitle(currentStep) }}</h2>
+
+  <!-- Stepper Navigation -->
+  <div class="stepper-row">
+    <div class="stepper">
+      @for (step of steps; track step) {
+        <button
+          type="button"
+          class="stepper-step"
+          [class.active]="currentStep === step"
+          [class.completed]="currentStep > step"
+          (click)="goToStep(step)"
+        >
+          <span class="stepper-number">{{ step }}</span>
+          <span class="stepper-label">Step {{ step }}</span>
+        </button>
+        @if (step < 6) {
+          <span class="stepper-connector"></span>
+        }
+      }
+    </div>
+  </div>
+
+  <!-- Step 1: Applicant Information -->
+  @if (currentStep === 1) {
+    <form [formGroup]="step1Form" (ngSubmit)="saveAndContinue()" class="applicant-form">
+      <div class="form-row">
+        <label class="form-label">Applicant Type:</label>
+        <div class="radio-group">
+          <label class="radio-option">
+            <input type="radio" formControlName="applicantType" value="individual" />
+            <span>Individual</span>
+          </label>
+          <label class="radio-option">
+            <input type="radio" formControlName="applicantType" value="business" />
+            <span>Business</span>
+          </label>
+          <label class="radio-option">
+            <input type="radio" formControlName="applicantType" value="ngo" />
+            <span>NGO</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label for="fullName" class="form-label">Full Name:</label>
+        <input
+          id="fullName"
+          type="text"
+          formControlName="fullName"
+          class="form-input"
+          placeholder="Enter full name"
+        />
+        @if (fullName?.invalid && fullName?.touched) {
+          <span class="error-text">Full name is required</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label for="organization" class="form-label">Organization:</label>
+        <input
+          id="organization"
+          type="text"
+          formControlName="organization"
+          class="form-input"
+          placeholder="Enter organization"
+        />
+      </div>
+
+      <div class="form-row">
+        <label for="email" class="form-label">Email:</label>
+        <input
+          id="email"
+          type="email"
+          formControlName="email"
+          class="form-input"
+          placeholder="Enter email"
+        />
+        @if (email?.invalid && email?.touched) {
+          <span class="error-text">Valid email is required</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label for="phone" class="form-label">Phone:</label>
+        <input
+          id="phone"
+          type="tel"
+          formControlName="phone"
+          class="form-input"
+          placeholder="Enter phone"
+        />
+        @if (phone?.invalid && phone?.touched) {
+          <span class="error-text">Phone is required</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label for="address" class="form-label">Address:</label>
+        <textarea
+          id="address"
+          formControlName="address"
+          class="form-textarea"
+          rows="4"
+          placeholder="Enter address"
+        ></textarea>
+        @if (address?.invalid && address?.touched) {
+          <span class="error-text">Address is required</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">Upload Signature:</label>
+        <div class="file-upload-wrap">
+          <input
+            type="file"
+            id="signature"
+            class="file-input"
+            accept="image/*,.pdf"
+            (change)="onSignatureChange($event)"
+          />
+          <label for="signature" class="file-label">Choose File</label>
+          @if (signatureFileName) {
+            <span class="file-name">{{ signatureFileName }}</span>
+          }
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save &amp; Continue</button>
+      </div>
+    </form>
+  }
+
+  <!-- Step 2: Property Details -->
+  @if (currentStep === 2) {
+    <form [formGroup]="step2Form" (ngSubmit)="saveAndContinue()" class="applicant-form property-form">
+      <div class="form-row">
+        <label for="zoningType" class="form-label">Zoning Type:</label>
+        <input
+          id="zoningType"
+          type="text"
+          formControlName="zoningType"
+          class="form-input"
+          placeholder="e.g. Residential, Commercial, Industrial, Mixed-Use, Civic/Public, Not existing"
+        />
+        @if (zoningType?.invalid && zoningType?.touched) {
+          <span class="error-text">Zoning type is required</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label for="landAreaSqFt" class="form-label">Land Area (sq ft):</label>
+        <input
+          id="landAreaSqFt"
+          type="number"
+          formControlName="landAreaSqFt"
+          class="form-input"
+          placeholder="Enter land area"
+          min="0"
+        />
+        @if (landAreaSqFt?.invalid && landAreaSqFt?.touched) {
+          <span class="error-text">Land area is required (min 0)</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label for="existingBuiltUpArea" class="form-label">Existing Built-up Area:</label>
+        <input
+          id="existingBuiltUpArea"
+          type="number"
+          formControlName="existingBuiltUpArea"
+          class="form-input"
+          placeholder="Enter existing built-up area"
+          min="0"
+        />
+        @if (existingBuiltUpArea?.invalid && existingBuiltUpArea?.touched) {
+          <span class="error-text">Required (min 0)</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label for="proposedBuiltUpArea" class="form-label">Proposed Built-up Area:</label>
+        <input
+          id="proposedBuiltUpArea"
+          type="number"
+          formControlName="proposedBuiltUpArea"
+          class="form-input"
+          placeholder="Enter proposed built-up area"
+          min="0"
+        />
+        @if (proposedBuiltUpArea?.invalid && proposedBuiltUpArea?.touched) {
+          <span class="error-text">Required (min 0)</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label for="noOfFloors" class="form-label">No. of Floors:</label>
+        <input
+          id="noOfFloors"
+          type="number"
+          formControlName="noOfFloors"
+          class="form-input"
+          placeholder="Enter number of floors"
+          min="0"
+        />
+        @if (noOfFloors?.invalid && noOfFloors?.touched) {
+          <span class="error-text">Required (min 0)</span>
+        }
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save &amp; Continue</button>
+      </div>
+    </form>
+  }
+
+  <!-- Step 3: Scope of Work & Document Upload (with AI Companion on the right) -->
+  @if (currentStep === 3) {
+    <div class="step3-layout">
+      <div class="step3-content">
+    <form [formGroup]="step3Form" (ngSubmit)="saveAndContinue()" class="applicant-form step3-form">
+      <div class="form-row">
+        <label for="describeProposedWork" class="form-label">Describe Proposed Work:</label>
+        <textarea
+          id="describeProposedWork"
+          formControlName="describeProposedWork"
+          class="form-textarea form-textarea-large"
+          rows="6"
+          placeholder="Describe the proposed work..."
+          [maxlength]="describeWorkMaxLength"
+        ></textarea>
+        <span class="char-count">Character Count: {{ describeWorkLength }}/{{ describeWorkMaxLength }}</span>
+        @if (describeProposedWork?.invalid && describeProposedWork?.touched) {
+          <span class="error-text">Description is required (max {{ describeWorkMaxLength }} characters)</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">Upload Structural Blueprint (PDF)</label>
+        <div
+          class="drop-zone"
+          (dragover)="$event.preventDefault(); $event.stopPropagation()"
+          (dragleave)="$event.preventDefault(); $event.stopPropagation()"
+          (drop)="$event.preventDefault(); $event.stopPropagation(); onBlueprintDrop($event.dataTransfer?.files ?? null)"
+        >
+          <span class="drop-zone-text">Drag &amp; Drop Area</span>
+          <input
+            type="file"
+            id="blueprint"
+            class="file-input"
+            accept=".pdf,application/pdf"
+            (change)="onBlueprintChange($event)"
+          />
+          <label for="blueprint" class="file-label">Browse File</label>
+        </div>
+        @if (blueprintFileName) {
+          <span class="file-name">{{ blueprintFileName }}</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">Upload Site Images (up to {{ maxSiteImages }} images)</label>
+        <div
+          class="drop-zone"
+          [class.drop-zone-full]="siteImageFiles.length >= maxSiteImages"
+          (dragover)="$event.preventDefault(); $event.stopPropagation()"
+          (dragleave)="$event.preventDefault(); $event.stopPropagation()"
+          (drop)="$event.preventDefault(); $event.stopPropagation(); onSiteImagesDrop($event.dataTransfer?.files ?? null)"
+        >
+          <span class="drop-zone-text">
+            @if (siteImageFiles.length >= maxSiteImages) {
+              Maximum {{ maxSiteImages }} images reached
+            } @else {
+              Drag &amp; drop or browse ({{ siteImageFiles.length }}/{{ maxSiteImages }})
+            }
+          </span>
+          <input
+            type="file"
+            id="siteImages"
+            class="file-input"
+            accept="image/*"
+            [multiple]="true"
+            [attr.aria-label]="'Site images, up to ' + maxSiteImages"
+            (change)="onSiteImagesChange($event)"
+          />
+          <label for="siteImages" class="file-label">Browse File</label>
+        </div>
+        @if (siteImageFiles.length > 0) {
+          <span class="file-name">{{ siteImageFiles.length }} of {{ maxSiteImages }} image(s) selected</span>
+        }
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save &amp; Continue</button>
+      </div>
+    </form>
+      </div>
+      <aside class="ai-companion-panel">
+        <h3 class="ai-companion-title">AI Companion</h3>
+        <p class="ai-companion-desc">Chat with the assistant for help on scope of work and documents.</p>
+        <div class="ai-companion-messages">
+          @for (msg of aiCompanionMessages; track $index) {
+            <div class="ai-message" [class.ai-message-bot]="msg.role === 'bot'" [class.ai-message-user]="msg.role === 'user'">
+              <span class="ai-message-text">{{ msg.text }}</span>
+            </div>
+          }
+        </div>
+        <div class="ai-companion-input-wrap">
+          <input
+            type="text"
+            class="ai-companion-input"
+            placeholder="Type your message..."
+            [ngModel]="aiCompanionInput"
+            (ngModelChange)="aiCompanionInput = $event"
+            (keydown.enter)="sendAiMessage(); $event.preventDefault()"
+          />
+          <button type="button" class="ai-companion-send" (click)="sendAiMessage()">Send</button>
+        </div>
+      </aside>
+    </div>
+  }
+
+  <!-- Step 4: AI Agents at Work (timeline) -->
+  @if (currentStep === 4) {
+    <div class="agent-activity-screen">
+      <p class="agent-activity-intro">Our AI agents are reviewing your application. This usually takes less than 2 minutes.</p>
+      <div class="timeline">
+        <div class="timeline-track">
+          @for (event of agentActivityEvents; track event.agentKey + event.time) {
+            <div class="timeline-item">
+              <div class="timeline-card">
+                <div class="timeline-card-head">
+                  <img [src]="getAgentImageUrl(event.agentKey)" [alt]="event.agentName" class="timeline-agent-avatar" [attr.data-agent]="event.agentKey" />
+                  <span class="timeline-agent-name">{{ event.agentName }}</span>
+                  <span class="timeline-time">{{ event.time }}</span>
+                </div>
+                @if (event.agentKey === 'intake' && event.subtitle) {
+                  <p class="timeline-agent-subtitle">{{ event.subtitle }}</p>
+                  @if (event.description) {
+                    <p class="timeline-agent-description">{{ event.description }}</p>
+                  }
+                  <span class="timeline-status" [ngClass]="getIntakeAgentStatusClass()">{{ intakeAgentStatus }}</span>
+                } @else if (event.agentKey === 'code' && event.subtitle) {
+                  <p class="timeline-agent-subtitle">{{ event.subtitle }}</p>
+                  @if (event.description) {
+                    <p class="timeline-agent-description">{{ event.description }}</p>
+                  }
+                  <span class="timeline-status" [ngClass]="getCodeAgentStatusClass()">{{ codeAgentStatus }}</span>
+                } @else if (event.agentKey === 'planner' && event.subtitle) {
+                  <p class="timeline-agent-subtitle">{{ event.subtitle }}</p>
+                  @if (event.description) {
+                    <p class="timeline-agent-description">{{ event.description }}</p>
+                  }
+                  <span class="timeline-status" [ngClass]="getPlannerAgentStatusClass()">{{ plannerAgentStatus }}</span>
+                } @else if (event.agentKey === 'inspector' && event.subtitle) {
+                  <p class="timeline-agent-subtitle">{{ event.subtitle }}</p>
+                  @if (event.description) {
+                    <p class="timeline-agent-description">{{ event.description }}</p>
+                  }
+                  <span class="timeline-status" [ngClass]="getInspectorAgentStatusClass()">{{ inspectorAgentStatus }}</span>
+                } @else {
+                  <p class="timeline-action">{{ event.action }}</p>
+                  @if (event.status !== '—') {
+                    <span class="timeline-status" [ngClass]="event.statusClass">{{ event.status }}</span>
+                  }
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+      <div class="agent-activity-actions">
+        <button
+          type="button"
+          class="btn-primary"
+          [disabled]="!canContinueToPreComplianceReport"
+          [attr.aria-label]="canContinueToPreComplianceReport ? 'Continue to Pre-Compliance Report' : 'Complete all agent reviews to continue'"
+          (click)="continueToPreComplianceReport()"
+        >
+          Continue to AI Permit Readiness Report
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- Step 5: AI Pre-Compliance Report -->
+  @if (currentStep === 5) {
+    <div class="step4-report">
+      <div class="ai-compliance-summary">
+        <h3 class="summary-title">AI Compliance Summary</h3>
+        <p class="summary-text">Review the AI-generated compliance findings below before submitting your application.</p>
+      </div>
+
+      <div class="findings-section">
+        <table class="findings-table">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Findings</th>
+              <th>Severity</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (finding of complianceFindings; track finding.agent + finding.findings) {
+              <tr>
+                <td>{{ getAgentDisplayName(finding.agent) }}</td>
+                <td>{{ finding.findings }}</td>
+                <td>
+                  <span class="finding-status" [ngClass]="getFindingStatusClass(finding.status)">
+                    {{ finding.status }}
+                  </span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="step4-actions">
+        <button type="button" class="btn-secondary" (click)="editApplication()">Edit Application</button>
+        <button type="button" class="btn-primary" (click)="submitForReview()" [disabled]="hasCriticalSeverity" [attr.aria-label]="hasCriticalSeverity ? 'Submit disabled: resolve Critical severity findings first' : 'Submit for Review'">Submit for Review</button>
+      </div>
+    </div>
+  }
+
+  <!-- Step 6: Permit Approved (Officer approved application) -->
+  @if (currentStep === 6) {
+    <div class="step6-permit-approved">
+      <section class="screen6-section">
+        <h3 class="screen6-section-title">Application Status: PERMIT APPROVED</h3>
+        <dl class="screen6-details">
+          <dt>Permit ID:</dt><dd>{{ submissionPermitId }}</dd>
+          <dt>Application Type:</dt><dd>Residential Remodel</dd>
+          <dt>Property Address:</dt><dd>1203 E 6th St, Austin, TX</dd>
+          <dt>Approval Date:</dt><dd>Feb 25, 2026</dd>
+          <dt>Approved By:</dt><dd>Building Review Department</dd>
+          <dt>Status:</dt><dd>APPROVED</dd>
+        </dl>
+      </section>
+      <section class="screen6-section">
+        <h3 class="screen6-section-title">PERMIT SUMMARY</h3>
+        <dl class="screen6-details">
+          <dt>Permit Type:</dt><dd>Residential Structural Remodel</dd>
+          <dt>Zoning:</dt><dd>SF-3</dd>
+          <dt>Approved Height:</dt><dd>35 ft</dd>
+          <dt>Occupancy Type:</dt><dd>R-2</dd>
+          <dt>Permit Valid Until:</dt><dd>March 12, 2027</dd>
+        </dl>
+      </section>
+      <div class="screen6-actions">
+        <button type="button" class="btn-primary" (click)="downloadCopy()">Download Approved Permit (PDF)</button>
+        <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
+      </div>
+    </div>
+  }
+</div>
