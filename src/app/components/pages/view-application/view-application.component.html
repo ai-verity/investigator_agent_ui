@@ -1,5 +1,5 @@
 <div class="view-application" [class.step3-active]="currentStep === 3">
-  <h2 class="screen-title">View Application – {{ getStepTitle(currentStep) }}</h2>
+  <h2 class="screen-title">{{ getStepTitle(currentStep) }}</h2>
 
   @if (!record) {
     <p class="no-record-message">No application selected. Please select a record from the dashboard.</p>
@@ -122,7 +122,7 @@
 
     @if (currentStep === 4) {
       <div class="agent-activity-screen">
-        <p class="agent-activity-intro">Our AI agents are reviewing your application. This usually takes less than 2 minutes.</p>
+        <!-- <p class="agent-activity-intro">Our AI agents are reviewing your application. This usually takes less than 2 minutes.</p> -->
         <div class="timeline">
           <div class="timeline-track">
             @for (event of agentActivityEvents; track event.agentName) {

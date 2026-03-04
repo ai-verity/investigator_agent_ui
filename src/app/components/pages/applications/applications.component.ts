@@ -122,7 +122,7 @@ export class ApplicationsComponent {
 
   complianceFindings: ComplianceFinding[] = [
     { agent: 'Intake', findings: 'Missing Fire Egress', status: 'Critical' },
-    { agent: 'Code Enforcement Agent', findings: 'Railing Height 34"', status: 'Violation' },
+    { agent: 'Code Enforcement', findings: 'Railing Height 34"', status: 'Violation' },
     { agent: 'Planner', findings: 'Impervious 44.2%', status: 'Warning' },
     { agent: 'Inspector', findings: 'Unpermitted Shed', status: 'Follow-up' },
   ];
