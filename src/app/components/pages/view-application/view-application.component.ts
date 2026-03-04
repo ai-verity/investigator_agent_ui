@@ -34,17 +34,17 @@ export class ViewApplicationComponent implements OnInit {
   record: ViewApplicationRecord | null = null;
 
   agentActivityEvents = [
-    { agentName: 'Intake Agent', status: 'DONE', time: '11:43 am', description: "We're reviewing your uploaded documents and capturing key project information." },
-    { agentName: 'Code Enforcement Agent', status: 'DONE', time: '11:45 am', description: "We're verifying your project against Austin building codes and safety standards." },
-    { agentName: 'Planning Agent', status: 'DONE', time: '11:47 am', description: "We're evaluating zoning rules, height limits, parking requirements, and overlay restrictions." },
-    { agentName: 'Inspector Agent', status: 'DONE', time: '11:49 am', description: "We're compiling the results of all checks into your pre-compliance report." },
+    { agentName: 'Intake Agent', agentKey: 'intake' as const, status: 'DONE', time: '11:43 am', description: "We're reviewing your uploaded documents and capturing key project information." },
+    { agentName: 'Code Enforcement Agent', agentKey: 'code' as const, status: 'DONE', time: '11:45 am', description: "We're verifying your project against Austin building codes and safety standards." },
+    { agentName: 'Planning Agent', agentKey: 'planner' as const, status: 'DONE', time: '11:47 am', description: "We're evaluating zoning rules, height limits, parking requirements, and overlay restrictions." },
+    { agentName: 'Inspector Agent', agentKey: 'inspector' as const, status: 'DONE', time: '11:49 am', description: "We're compiling the results of all checks into your pre-compliance report." },
   ];
 
   complianceFindings = [
-    { agent: 'Intake', findings: 'Missing Fire Egress', status: 'Critical' },
-    { agent: 'Code Enforcement', findings: 'Railing Height 34"', status: 'Violation' },
-    { agent: 'Planner', findings: 'Impervious 44.2%', status: 'Warning' },
-    { agent: 'Inspector', findings: 'Unpermitted Shed', status: 'Follow-up' },
+    { agent: 'Intake', findings: 'Missing Fire Egress', aiSuggestion: 'Add Fire Egress', status: 'Critical' },
+    { agent: 'Code Enforcement', findings: 'Railing Height 34"', aiSuggestion: 'Railing Height 36"', status: 'Violation' },
+    { agent: 'Planner', findings: 'Impervious 44.2%', aiSuggestion: 'Impervious 48%', status: 'Warning' },
+    { agent: 'Inspector', findings: 'Unpermitted Shed', aiSuggestion: 'NA', status: 'Follow-up' },
   ];
 
   constructor(private router: Router) {}
@@ -69,7 +69,7 @@ export class ViewApplicationComponent implements OnInit {
       2: 'Property Details',
       3: 'Scope of Work & Document Upload',
       4: 'AI Agents at Work',
-      5: 'AI Pre-Compliance Report',
+      5: 'AI Permit Readiness Report',
       6: 'Submission Confirmation',
     };
     return titles[step] ?? `Step ${step}`;
@@ -98,5 +98,15 @@ export class ViewApplicationComponent implements OnInit {
   getAgentDisplayName(agent: string): string {
     if (agent === 'Code') return 'Code Enforcement Agent';
     return agent;
+  }
+
+  getAgentImageUrl(agentKey: 'intake' | 'code' | 'planner' | 'inspector'): string {
+    const map: Record<string, string> = {
+      intake: 'assets/agents/Intake_Agent.png',
+      code: 'assets/agents/Code_Enforcement_Agent.png',
+      planner: 'assets/agents/Planning_Agent.png',
+      inspector: 'assets/agents/Inspector_Agent.png',
+    };
+    return map[agentKey] ?? 'assets/agents/Intake_Agent.png';
   }
 }

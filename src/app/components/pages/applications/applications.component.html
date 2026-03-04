@@ -399,6 +399,7 @@
             <tr>
               <th>Agent</th>
               <th>Findings</th>
+              <th>AI Suggestions</th>
               <th>Severity</th>
             </tr>
           </thead>
@@ -407,6 +408,7 @@
               <tr>
                 <td>{{ getAgentDisplayName(finding.agent) }}</td>
                 <td>{{ finding.findings }}</td>
+                <td>{{ finding.aiSuggestion }}</td>
                 <td>
                   <span class="finding-status" [ngClass]="getFindingStatusClass(finding.status)">
                     {{ finding.status }}
@@ -425,32 +427,15 @@
     </div>
   }
 
-  <!-- Step 6: Permit Approved (Officer approved application) -->
+  <!-- Step 6: Application Submitted Successfully -->
   @if (currentStep === 6) {
     <div class="step6-permit-approved">
-      <section class="screen6-section">
-        <h3 class="screen6-section-title">Application Status: PERMIT APPROVED</h3>
-        <dl class="screen6-details">
-          <dt>Permit ID:</dt><dd>{{ submissionPermitId }}</dd>
-          <dt>Application Type:</dt><dd>Residential Remodel</dd>
-          <dt>Property Address:</dt><dd>1203 E 6th St, Austin, TX</dd>
-          <dt>Approval Date:</dt><dd>Feb 25, 2026</dd>
-          <dt>Approved By:</dt><dd>Building Review Department</dd>
-          <dt>Status:</dt><dd>APPROVED</dd>
-        </dl>
-      </section>
-      <section class="screen6-section">
-        <h3 class="screen6-section-title">PERMIT SUMMARY</h3>
-        <dl class="screen6-details">
-          <dt>Permit Type:</dt><dd>Residential Structural Remodel</dd>
-          <dt>Zoning:</dt><dd>SF-3</dd>
-          <dt>Approved Height:</dt><dd>35 ft</dd>
-          <dt>Occupancy Type:</dt><dd>R-2</dd>
-          <dt>Permit Valid Until:</dt><dd>March 12, 2027</dd>
-        </dl>
-      </section>
+      <h3 class="step6-success-title">Application Submitted Successfully</h3>
+      <dl class="step6-submission-details">
+        <dt>Permit ID:</dt><dd>{{ submissionPermitId }}</dd>
+      </dl>
       <div class="screen6-actions">
-        <button type="button" class="btn-primary" (click)="downloadCopy()">Download Approved Permit (PDF)</button>
+        <button type="button" class="btn-primary" (click)="downloadCopy()">Download Copy</button>
         <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
       </div>
     </div>

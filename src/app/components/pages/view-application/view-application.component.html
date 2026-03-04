@@ -125,10 +125,11 @@
         <!-- <p class="agent-activity-intro">Our AI agents are reviewing your application. This usually takes less than 2 minutes.</p> -->
         <div class="timeline">
           <div class="timeline-track">
-            @for (event of agentActivityEvents; track event.agentName) {
+            @for (event of agentActivityEvents; track event.agentKey) {
               <div class="timeline-item">
                 <div class="timeline-card">
                   <div class="timeline-card-head">
+                    <img [src]="getAgentImageUrl(event.agentKey)" [alt]="event.agentName" class="timeline-agent-avatar" [attr.data-agent]="event.agentKey" />
                     <span class="timeline-agent-name">{{ event.agentName }}</span>
                     <span class="timeline-time">{{ event.time }}</span>
                   </div>
@@ -158,6 +159,7 @@
               <tr>
                 <th>Agent</th>
                 <th>Findings</th>
+                <th>AI Suggestions</th>
                 <th>Severity</th>
               </tr>
             </thead>
@@ -166,6 +168,7 @@
                 <tr>
                   <td>{{ getAgentDisplayName(finding.agent) }}</td>
                   <td>{{ finding.findings }}</td>
+                  <td>{{ finding.aiSuggestion }}</td>
                   <td>
                     <span class="finding-status" [ngClass]="getFindingStatusClass(finding.status)">{{ finding.status }}</span>
                   </td>

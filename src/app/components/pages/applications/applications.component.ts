@@ -10,6 +10,7 @@ export type FindingStatus = 'Critical' | 'Violation' | 'Warning' | 'Follow-up';
 export interface ComplianceFinding {
   agent: string;
   findings: string;
+  aiSuggestion: string;
   status: FindingStatus;
 }
 
@@ -49,6 +50,8 @@ export class ApplicationsComponent {
   currentStep = 1;
   totalSteps = 6;
   steps = [1, 2, 3, 4, 5, 6];
+  /** Unique application ID (UUID) created when user opens New Application – used across all steps */
+  applicationId: string;
   step1Form: FormGroup;
   step2Form: FormGroup;
   step3Form: FormGroup;
@@ -121,33 +124,34 @@ export class ApplicationsComponent {
   ];
 
   complianceFindings: ComplianceFinding[] = [
-    { agent: 'Intake', findings: 'Missing Fire Egress', status: 'Critical' },
-    { agent: 'Code Enforcement', findings: 'Railing Height 34"', status: 'Violation' },
-    { agent: 'Planner', findings: 'Impervious 44.2%', status: 'Warning' },
-    { agent: 'Inspector', findings: 'Unpermitted Shed', status: 'Follow-up' },
+    { agent: 'Intake', findings: 'Missing Fire Egress', aiSuggestion: 'Add Fire Egress', status: 'Critical' },
+    { agent: 'Code Enforcement', findings: 'Railing Height 34"', aiSuggestion: 'Railing Height 36"', status: 'Violation' },
+    { agent: 'Planner', findings: 'Impervious 44.2%', aiSuggestion: 'Impervious 48%', status: 'Warning' },
+    { agent: 'Inspector', findings: 'Unpermitted Shed', aiSuggestion: 'NA', status: 'Follow-up' },
   ];
 
   submissionPermitId = 'BLR-006';
   estimatedReviewDays = 18;
 
   constructor(private fb: FormBuilder, private router: Router) {
+    this.applicationId = this.generateUUID();
     this.step1Form = this.fb.nonNullable.group({
-      applicantType: ['individual' as ApplicantType, Validators.required],
-      fullName: ['', Validators.required],
+      applicantType: ['individual' as ApplicantType],
+      fullName: [''],
       organization: [''],
-      email: ['', [Validators.required, Validators.email]],
-      phone: ['', Validators.required],
-      address: ['', Validators.required],
+      email: [''],
+      phone: [''],
+      address: [''],
     });
     this.step2Form = this.fb.nonNullable.group({
-      zoningType: ['', Validators.required],
-      landAreaSqFt: ['', [Validators.required, Validators.min(0)]],
-      existingBuiltUpArea: ['', [Validators.required, Validators.min(0)]],
-      proposedBuiltUpArea: ['', [Validators.required, Validators.min(0)]],
-      noOfFloors: ['', [Validators.required, Validators.min(0)]],
+      zoningType: [''],
+      landAreaSqFt: [''],
+      existingBuiltUpArea: [''],
+      proposedBuiltUpArea: [''],
+      noOfFloors: [''],
     });
     this.step3Form = this.fb.nonNullable.group({
-      describeProposedWork: ['', [Validators.required, Validators.maxLength(this.describeWorkMaxLength)]],
+      describeProposedWork: [''],
     });
   }
 
@@ -252,6 +256,9 @@ export class ApplicationsComponent {
     } else if (this.currentStep === 3) {
       this.step3Form.markAllAsTouched();
       if (this.step3Form.valid) {
+        // Collect all data (Step 1–3 + applicationId) for submit
+        const payload = this.getApplicationData();
+        console.log('New application submit payload (Step 1–3):', payload);
         this.currentStep = 4; // Show "AI Agents at Work" timeline
       }
     }
@@ -367,10 +374,39 @@ export class ApplicationsComponent {
       2: 'Property Details',
       3: 'Scope of Work & Document Upload',
       4: 'AI Agents at Work',
-      5: 'AI Pre-Compliance Report',
+      5: 'AI Permit Readiness Report',
       6: 'Submission Confirmation',
     };
     return titles[step] ?? `Step ${step}`;
+  }
+
+  /** Generate a UUID v4 for applicationId (created when New Application is opened). */
+  private generateUUID(): string {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  /** Application data (applicationId + steps data) for API or persistence. */
+  getApplicationData(): {
+    applicationId: string;
+    step1: Record<string, unknown>;
+    step2: Record<string, unknown>;
+    step3: Record<string, unknown>;
+    currentStep: number;
+  } {
+    return {
+      applicationId: this.applicationId,
+      step1: this.step1Form.getRawValue(),
+      step2: this.step2Form.getRawValue(),
+      step3: this.step3Form.getRawValue(),
+      currentStep: this.currentStep,
+    };
   }
 
   editApplication(): void {
@@ -383,6 +419,9 @@ export class ApplicationsComponent {
   }
 
   submitForReview(): void {
+    const year = new Date().getFullYear();
+    const num = Math.floor(1000 + Math.random() * 9000);
+    this.submissionPermitId = `BLR-${year}-${num}`;
     this.goToStep(6);
   }
 
