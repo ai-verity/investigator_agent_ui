@@ -41,6 +41,3 @@ coverage/
 
 # Optional: uncomment if you don't want to commit lockfile
 # package-lock.json
-
-# Nested repo / other project – avoid "does not have a commit checked out" on git add
-investigator_mas/

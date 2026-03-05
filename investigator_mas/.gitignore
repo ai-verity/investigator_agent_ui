@@ -1,0 +1,27 @@
+# Compiled or generated files
+*.o
+*.class
+*.pyc
+/dist
+/build
+/target
+
+# Dependencies
+/node_modules
+/vendor
+.venv/
+env/
+
+# Logs and temporary files
+*.log
+*.tmp
+__pycache__/
+
+# Sensitive files (adjust names as needed)
+.env
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
