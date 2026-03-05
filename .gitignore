@@ -1,15 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+
 # Dependencies
 node_modules/
-
-# Angular cache and build
-.angular/
-dist/
-*.ngfactory.ts
-*.ngsummary.json
-
-# Build outputs
-*.js.map
-*.tsbuildinfo
 
 # IDE and editors
 .idea/
@@ -29,15 +31,9 @@ Thumbs.db
 
 # Logs and temp
 *.log
-npm-debug.log*
-.npm
+*.tmp
 tmp/
 temp/
 
-# Test and coverage
-coverage/
-.nyc_output/
-*.lcov
-
-# Optional: uncomment if you don't want to commit lockfile
-# package-lock.json
+# Database (optional: uncomment if you don't want to commit db files)
+# *.db
