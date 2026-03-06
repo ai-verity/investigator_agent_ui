@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { ApplicationsApiService, ApplicationDetail } from '../../../services/applications-api.service';
@@ -168,5 +168,37 @@ export class ViewApplicationComponent implements OnInit {
       inspector: 'assets/agents/Inspector_Agent.png',
     };
     return map[agentKey] ?? 'assets/agents/Intake_Agent.png';
+  }
+
+  /** Blueprint image from assets/images/blueprint. Uses record.blueprintFileName or default file. */
+  getBlueprintImageUrl(): string {
+    if (!this.record) return 'assets/images/blueprint/blueprint.png';
+    const name = this.record.blueprintFileName?.trim();
+    if (name) return `assets/images/blueprint/${name}`;
+    return 'assets/images/blueprint/old_permit_modified 1.jpg';
+  }
+
+  /** Site image URLs from assets/images/site-images. Uses known filenames, limited by siteImagesCount. */
+  getSiteImageUrls(): string[] {
+    const files = ['front_view.png', 'back_view.png'];
+    const count = this.record?.siteImagesCount;
+    const n = typeof count === 'number' ? Math.min(Math.max(0, count), files.length) : files.length;
+    return files.slice(0, n || files.length).map((f) => `assets/images/site-images/${f}`);
+  }
+
+  /** Enlarged image URL (blueprint or site); null when closed. */
+  enlargedImageUrl: string | null = null;
+
+  openImageEnlarged(url: string): void {
+    this.enlargedImageUrl = url;
+  }
+
+  closeImageEnlarged(): void {
+    this.enlargedImageUrl = null;
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.enlargedImageUrl) this.closeImageEnlarged();
   }
 }

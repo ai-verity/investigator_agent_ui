@@ -114,9 +114,21 @@
           <span class="form-label">Upload Structural Blueprint:</span>
           <span class="view-value view-mode-placeholder">{{ record.blueprintFileName ?? '—' }}</span>
         </div>
+        <div class="blueprint-preview">
+          <button type="button" class="image-thumb-btn" (click)="openImageEnlarged(getBlueprintImageUrl())" aria-label="View blueprint full size">
+            <img [src]="getBlueprintImageUrl()" alt="Blueprint" class="blueprint-img" (error)="$any($event.target).style.display='none'" />
+          </button>
+        </div>
         <div class="form-row">
           <span class="form-label">Upload Site Images:</span>
           <span class="view-value view-mode-placeholder">{{ record.siteImagesCount != null ? record.siteImagesCount + ' image(s)' : '—' }}</span>
+        </div>
+        <div class="site-images-preview">
+          @for (url of getSiteImageUrls(); track url) {
+            <button type="button" class="image-thumb-btn" (click)="openImageEnlarged(url)" [attr.aria-label]="'View site image full size'">
+              <img [src]="url" alt="Site image" class="site-preview-img" (error)="$any($event.target).style.display='none'" />
+            </button>
+          }
         </div>
         <div class="form-actions">
           <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
@@ -214,6 +226,15 @@
         <div class="screen6-actions">
           <button type="button" class="btn-primary">Download Approved Permit (PDF)</button>
           <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
+        </div>
+      </div>
+    }
+
+    @if (enlargedImageUrl) {
+      <div class="image-enlarge-backdrop" (click)="closeImageEnlarged()" role="button" tabindex="0" aria-label="Close enlarged image">
+        <div class="image-enlarge-content" (click)="$event.stopPropagation()">
+          <img [src]="enlargedImageUrl" alt="Enlarged view" class="image-enlarge-img" />
+          <button type="button" class="btn-secondary image-enlarge-cancel" (click)="closeImageEnlarged()">Cancel</button>
         </div>
       </div>
     }

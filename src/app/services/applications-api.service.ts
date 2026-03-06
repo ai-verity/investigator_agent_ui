@@ -39,6 +39,11 @@ export interface ApplicationListItem {
   zoningType?: string;
   status?: string;
   application_status?: string;
+  owner_name?: string;
+  date?: string;
+  submitted_date?: string;
+  submitted_time?: string;
+  sow_text?: string;
 }
 
 /** Response from POST /applications/{app_id} (view application). Map all fields from API. */

@@ -58,6 +58,89 @@
   font-style: italic;
 }
 
+// Clickable image thumbnails (no button chrome)
+.image-thumb-btn {
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: inline-block;
+  line-height: 0;
+}
+
+// Blueprint and site images from assets/images (same size as site images)
+.blueprint-preview {
+  margin: 0.5rem 0 1rem;
+
+  .blueprint-img {
+    max-width: 200px;
+    max-height: 160px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    display: block;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+  }
+}
+
+.site-images-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0 1rem;
+
+  .site-preview-img {
+    max-width: 200px;
+    max-height: 160px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+  }
+}
+
+// Enlarged image overlay (click image to open, Cancel to close)
+.image-enlarge-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.image-enlarge-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  padding: 1.5rem;
+  max-width: 95vw;
+  max-height: 95vh;
+}
+
+.image-enlarge-img {
+  max-width: 85vw;
+  max-height: 75vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  border-radius: 6px;
+}
+
+.image-enlarge-cancel {
+  flex-shrink: 0;
+}
+
 // Step 6: keep left-aligned when viewing a record from Dashboard (override applications’ centered Step 6)
 .step6-permit-approved {
   text-align: left;

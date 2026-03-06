@@ -38,11 +38,22 @@
   font-size: 0.9rem;
 }
 
-.table-loader {
+.table-loader,
+.records-loader {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem 0;
+}
+
+.admin-records-error {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 0.875rem;
 }
 
 .spinner {

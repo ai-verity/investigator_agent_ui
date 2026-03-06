@@ -48,16 +48,12 @@ export class DashboardComponent implements OnInit {
   userPermitsLoading = false;
   userPermitsError = '';
 
-  // Admin view: filters + list + detail
+  // Admin view: filters + list + detail (loaded from list applications API)
   filterPermitType = signal<string>('');
   filterZoningType = signal<string>('');
-
-  adminRecords: AdminRecord[] = [
-    { permitId: 'BLR-001', applicant: 'John Smith', address: 'MG Road', status: 'New', daysElapsed: 5, permitType: 'New Construction', zoningType: 'Residential', submittedDate: 'Feb 18, 2026', submittedTime: '06:31 PM', landAreaSqFt: 2400, existingBuiltUpArea: 1800, proposedBuiltUpArea: 2400, noOfFloors: 2, proposedHeightFt: 36, allowedHeightFt: 35, imperviousCoverPct: 48, scopeOfWork: 'New single-family residential construction at MG Road. Two-story structure with total built-up area of 2,400 sq ft. Scope includes foundation, framing, roofing, electrical, plumbing, and HVAC. Compliance with residential building codes and local setback requirements. Landscaping and driveway as per approved site plan.' },
-    { permitId: 'BLR-002', applicant: 'ABC Builders', address: 'Indiranagar', status: 'Approved', daysElapsed: 18, permitType: 'Remodel/Alteration', zoningType: 'Commercial', submittedDate: 'Feb 17, 2026', submittedTime: '02:15 PM', landAreaSqFt: 5000, existingBuiltUpArea: 0, proposedBuiltUpArea: 4500, noOfFloors: 4, proposedHeightFt: 42, allowedHeightFt: 40, imperviousCoverPct: 52, scopeOfWork: 'Commercial remodel and interior alteration of existing building. Four-floor structure with 4,500 sq ft proposed built-up area. Interior demolition, structural modifications, new MEP systems, facade update, and interior fit-out. Fire safety and accessibility upgrades per commercial code.' },
-    { permitId: 'BLR-003', applicant: 'Jane Doe', address: 'Whitefield', status: 'Requested Revision', daysElapsed: 12, permitType: 'Demolition', zoningType: 'Mixed-Use', submittedDate: 'Feb 19, 2026', submittedTime: '10:45 AM', landAreaSqFt: 3500, existingBuiltUpArea: 1200, proposedBuiltUpArea: 2800, noOfFloors: 3, proposedHeightFt: 28, allowedHeightFt: 30, imperviousCoverPct: 44, scopeOfWork: 'Partial demolition and rebuild: remove existing 1,200 sq ft structure; new three-story mixed-use building with 2,800 sq ft. Scope includes safe demolition, debris disposal, new foundation, and construction per approved plans. Stormwater and erosion control during demolition.' },
-    { permitId: 'BLR-004', applicant: 'XYZ Corp', address: 'Koramangala', status: 'Rejected', daysElapsed: 8, permitType: 'New Construction', zoningType: 'Industrial', submittedDate: 'Feb 20, 2026', submittedTime: '04:22 PM', landAreaSqFt: 1800, existingBuiltUpArea: 1500, proposedBuiltUpArea: 1600, noOfFloors: 2, proposedHeightFt: 24, allowedHeightFt: 25, imperviousCoverPct: 38, scopeOfWork: 'New industrial warehouse and office annex. Two-story building, 1,600 sq ft proposed. Site within floodplain overlay; scope includes fill, grading, foundation, and structure. Applicant has requested variance for impervious cover. All work to comply with industrial zoning and floodplain development standards.' },
-  ];
+  adminRecords: AdminRecord[] = [];
+  adminRecordsLoading = false;
+  adminRecordsError = '';
 
   selectedRecord = signal<AdminRecord | null>(null);
   otherDetailButtons = [
@@ -126,30 +122,113 @@ export class DashboardComponent implements OnInit {
   zoningTypeOptions = ['', 'Residential', 'Commercial', 'Industrial', 'Mixed-Use', 'Civic/Public'];
 
   filteredRecords = computed(() => {
-    const permitType = this.filterPermitType();
-    const zoningType = this.filterZoningType();
-    return this.adminRecords.filter(r => {
-      if (permitType && r.permitType !== permitType) return false;
-      if (zoningType && r.zoningType !== zoningType) return false;
+    let permitType = (this.filterPermitType() || '').trim();
+    let zoningType = (this.filterZoningType() || '').trim();
+    if (permitType.toLowerCase() === 'all') permitType = '';
+    if (zoningType.toLowerCase() === 'all') zoningType = '';
+    return this.adminRecords.filter((r) => {
+      if (permitType && this.normalizeForFilter(r.permitType) !== this.normalizeForFilter(permitType)) return false;
+      if (zoningType && this.normalizeForFilter(r.zoningType) !== this.normalizeForFilter(zoningType)) return false;
       return true;
     });
   });
+
+  /** Case-insensitive normalize for filter comparison; map API values to dropdown option values. */
+  private normalizeForFilter(value: string | undefined): string {
+    if (value === undefined || value === null) return '';
+    const v = String(value).trim().toLowerCase();
+    const permitMap: Record<string, string> = {
+      new: 'new construction',
+      'new construction': 'new construction',
+      remodel: 'remodel/alteration',
+      alteration: 'remodel/alteration',
+      'remodel/alteration': 'remodel/alteration',
+      demolition: 'demolition',
+    };
+    const zoningMap: Record<string, string> = {
+      residential: 'residential',
+      commercial: 'commercial',
+      industrial: 'industrial',
+      'mixed-use': 'mixed-use',
+      'mixed use': 'mixed-use',
+      'civic/public': 'civic/public',
+      civic: 'civic/public',
+      public: 'civic/public',
+    };
+    const p = permitMap[v];
+    if (p) return p;
+    const z = zoningMap[v];
+    if (z) return z;
+    return v;
+  }
 
   constructor(
     public auth: AuthService,
     private router: Router,
     private applicationsApi: ApplicationsApiService,
-  ) {
-    // Auto-select first record for admin so right panel shows data (no tab selected by default)
-    if (this.auth.currentRole === 'admin' && this.adminRecords.length > 0) {
-      this.selectedRecord.set(this.adminRecords[0]);
-    }
-  }
+  ) {}
 
   ngOnInit(): void {
     if (this.auth.currentRole === 'user') {
       this.loadUserApplications();
+    } else if (this.auth.currentRole === 'admin') {
+      this.loadAdminApplications();
     }
+  }
+
+  private loadAdminApplications(): void {
+    this.adminRecordsLoading = true;
+    this.adminRecordsError = '';
+    this.selectedRecord.set(null);
+    this.applicationsApi.listApplications().subscribe({
+      next: (response: ApplicationListItem[] | Record<string, unknown>) => {
+        this.adminRecordsLoading = false;
+        let items: ApplicationListItem[] = Array.isArray(response) ? response : [];
+        if (!items.length && response && typeof response === 'object' && !Array.isArray(response)) {
+          const obj = response as Record<string, unknown>;
+          if (Array.isArray(obj.data)) items = obj.data as ApplicationListItem[];
+          else if (Array.isArray(obj.applications)) items = obj.applications as ApplicationListItem[];
+          else {
+            // Array-like response: { "0": {...}, "1": {...} } from some backends
+            const values = Object.values(obj);
+            if (values.length > 0 && values.every((v) => v && typeof v === 'object' && ('application_id' in v || 'app_id' in v || 'permit_id' in v))) {
+              items = values as ApplicationListItem[];
+            }
+          }
+        }
+        this.adminRecords = (items || []).map((it) => this.mapListItemToAdminRecord(it));
+        if (this.adminRecords.length > 0) {
+          this.selectedRecord.set(this.adminRecords[0]);
+        }
+      },
+      error: (err) => {
+        console.error('Admin list applications failed:', err);
+        this.adminRecordsLoading = false;
+        const statusVal = err?.status;
+        const status =
+          statusVal === 0 || typeof statusVal === 'number'
+            ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
+            : '';
+        this.adminRecordsError = `Failed to load applications${status}`;
+      },
+    });
+  }
+
+  private mapListItemToAdminRecord(it: ApplicationListItem): AdminRecord {
+    const toStr = (v: unknown) => (v === undefined || v === null ? '' : String(v));
+    const permitId = toStr(it.permit_id ?? it.application_id ?? it.app_id) || '—';
+    return {
+      permitId,
+      applicant: toStr(it.owner_name) || '—',
+      address: toStr(it.project_address ?? it.address) || '—',
+      status: toStr(it.status ?? it.application_status) || '—',
+      daysElapsed: 0,
+      permitType: toStr(it.application_type ?? it.permit_type) || '—',
+      zoningType: toStr(it.zoning_type ?? it.zoningType) || '—',
+      submittedDate: toStr(it.submitted_date ?? it.date) || '—',
+      submittedTime: toStr(it.submitted_time) || '—',
+      scopeOfWork: it.sow_text ? toStr(it.sow_text) : undefined,
+    };
   }
 
   private loadUserApplications(): void {

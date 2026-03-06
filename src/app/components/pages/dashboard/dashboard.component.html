@@ -40,6 +40,14 @@
         </div>
 
         <div class="list-section">
+          @if (adminRecordsError) {
+            <p class="error-text admin-records-error">{{ adminRecordsError }}</p>
+          }
+          @if (adminRecordsLoading) {
+            <div class="records-loader" aria-label="Loading applications">
+              <span class="spinner" aria-hidden="true"></span>
+            </div>
+          }
           <div class="records-list">
             @for (record of filteredRecords(); track record.permitId) {
               <div
@@ -85,8 +93,8 @@
                 </div>
               </div>
             }
-            @if (filteredRecords().length === 0) {
-              <p class="no-records">No records match the filters.</p>
+            @if (!adminRecordsLoading && filteredRecords().length === 0) {
+              <p class="no-records">{{ adminRecords.length === 0 ? 'No applications found.' : 'No records match the filters.' }}</p>
             }
           </div>
         </div>
