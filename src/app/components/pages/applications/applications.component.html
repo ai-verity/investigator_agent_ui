@@ -245,7 +245,7 @@
       </div>
 
       <div class="form-row">
-        <label class="form-label">Upload Structural Blueprint (PDF)</label>
+        <label class="form-label">Upload Structural Blueprint</label>
         <div
           class="drop-zone"
           (dragover)="$event.preventDefault(); $event.stopPropagation()"
@@ -257,13 +257,19 @@
             type="file"
             id="blueprint"
             class="file-input"
-            accept=".pdf,application/pdf"
+            accept="*/*"
             (change)="onBlueprintChange($event)"
           />
           <label for="blueprint" class="file-label">Browse File</label>
         </div>
         @if (blueprintFileName) {
           <span class="file-name">{{ blueprintFileName }}</span>
+        }
+        @if (blueprintUploadError) {
+          <span class="error-text">{{ blueprintUploadError }}</span>
+        }
+        @if (blueprintUploadLoading) {
+          <span class="helper-text">Uploading blueprint…</span>
         }
       </div>
 
@@ -297,10 +303,18 @@
         @if (siteImageFiles.length > 0) {
           <span class="file-name">{{ siteImageFiles.length }} of {{ maxSiteImages }} image(s) selected</span>
         }
+        @if (photosUploadError) {
+          <span class="error-text">{{ photosUploadError }}</span>
+        }
+        @if (photosUploadLoading) {
+          <span class="helper-text">Uploading photos…</span>
+        }
       </div>
 
       <div class="form-actions">
-        <button type="submit" class="btn-primary">Save &amp; Continue</button>
+        <button type="submit" class="btn-primary" [disabled]="step3UploadLoading || blueprintUploadLoading || photosUploadLoading">
+          @if (step3UploadLoading) { Uploading… } @else { Save &amp; Continue }
+        </button>
       </div>
     </form>
       </div>

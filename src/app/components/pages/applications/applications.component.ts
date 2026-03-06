@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ApplicationsApiService, StartApplicationRequest, SowRequest, SowResponse } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
+import { forkJoin, of } from 'rxjs';
 
 type ApplicantType = 'individual' | 'business' | 'ngo';
 
@@ -70,7 +71,12 @@ export class ApplicationsComponent {
   signatureFileName = '';
   blueprintFile: File | null = null;
   blueprintFileName = '';
+  blueprintUploadLoading = false;
+  blueprintUploadError = '';
   siteImageFiles: File[] = [];
+  photosUploadLoading = false;
+  photosUploadError = '';
+  step3UploadLoading = false;
   readonly describeWorkMaxLength = 2000;
 
   aiCompanionMessages: { role: 'user' | 'bot'; text: string; isSow?: boolean }[] = [
@@ -234,10 +240,8 @@ export class ApplicationsComponent {
   onBlueprintDrop(files: FileList | null): void {
     if (files?.length) {
       const file = files[0];
-      if (file.type === 'application/pdf') {
-        this.blueprintFile = file;
-        this.blueprintFileName = file.name;
-      }
+      this.blueprintFile = file;
+      this.blueprintFileName = file.name;
     }
   }
 
@@ -256,8 +260,65 @@ export class ApplicationsComponent {
   onSiteImagesDrop(files: FileList | null): void {
     if (files?.length) {
       const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
-      this.siteImageFiles = [...this.siteImageFiles, ...imageFiles].slice(0, this.maxSiteImages);
+      const next = [...this.siteImageFiles, ...imageFiles].slice(0, this.maxSiteImages);
+      this.siteImageFiles = next;
     }
+  }
+
+  private uploadBlueprintFile(file: File): void {
+    if (!this.applicationId) return;
+    this.blueprintUploadLoading = true;
+    this.blueprintUploadError = '';
+    this.applicationsApi.uploadBlueprint(this.applicationId, file).subscribe({
+      next: () => {
+        this.blueprintUploadLoading = false;
+      },
+      error: (err) => {
+        console.error('Blueprint upload failed:', err);
+        this.blueprintUploadLoading = false;
+        const statusVal = err?.status;
+        const status =
+          statusVal === 0 || typeof statusVal === 'number'
+            ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
+            : '';
+        const url = err?.url ? ` URL: ${err.url}` : '';
+        const hint =
+          statusVal === 0
+            ? ' Request blocked (CORS / network).'
+            : statusVal === 404
+              ? ' Upload endpoint not found.'
+              : '';
+        this.blueprintUploadError = `Blueprint upload failed${status}.${hint}${url}`;
+      },
+    });
+  }
+
+  private uploadPhotoFiles(files: File[]): void {
+    if (!this.applicationId || files.length === 0) return;
+    this.photosUploadLoading = true;
+    this.photosUploadError = '';
+    this.applicationsApi.uploadPhotos(this.applicationId, files).subscribe({
+      next: () => {
+        this.photosUploadLoading = false;
+      },
+      error: (err) => {
+        console.error('Photo upload failed:', err);
+        this.photosUploadLoading = false;
+        const statusVal = err?.status;
+        const status =
+          statusVal === 0 || typeof statusVal === 'number'
+            ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
+            : '';
+        const url = err?.url ? ` URL: ${err.url}` : '';
+        const hint =
+          statusVal === 0
+            ? ' Request blocked (CORS / network).'
+            : statusVal === 404
+              ? ' Upload endpoint not found.'
+              : '';
+        this.photosUploadError = `Photo upload failed${status}.${hint}${url}`;
+      },
+    });
   }
 
   saveAndContinue(): void {
@@ -287,8 +348,9 @@ export class ApplicationsComponent {
       this.startApplicationError = '';
       this.applicationsApi.startApplication(startPayload).subscribe({
         next: (res: unknown) => {
-          const body = res as { application_id?: string };
-          if (body?.application_id) this.applicationId = body.application_id;
+          const body = res as { application_id?: string | number; app_id?: string | number };
+          const id = body?.application_id ?? body?.app_id;
+          if (id !== undefined && id !== null && String(id).trim()) this.applicationId = String(id).trim();
           this.applicationStarted = true;
           this.startApplicationLoading = false;
           this.startApplicationError = '';
@@ -303,7 +365,50 @@ export class ApplicationsComponent {
     } else if (this.currentStep === 3) {
       this.step3Form.markAllAsTouched();
       if (this.step3Form.valid) {
-        this.currentStep = 4; // AI Agents at Work; applicationId set on load for SOW in Step 3
+        if (this.step3UploadLoading) return;
+
+        this.step3UploadLoading = true;
+        this.blueprintUploadError = '';
+        this.photosUploadError = '';
+
+        const uploads = forkJoin({
+          blueprint: this.blueprintFile
+            ? this.applicationsApi.uploadBlueprint(this.applicationId, this.blueprintFile)
+            : of(null),
+          photos:
+            this.siteImageFiles.length > 0 ? this.applicationsApi.uploadPhotos(this.applicationId, this.siteImageFiles) : of(null),
+        });
+
+        // Mirror loading flags so UI can show progress under each control
+        this.blueprintUploadLoading = !!this.blueprintFile;
+        this.photosUploadLoading = this.siteImageFiles.length > 0;
+
+        uploads.subscribe({
+          next: () => {
+            this.step3UploadLoading = false;
+            this.blueprintUploadLoading = false;
+            this.photosUploadLoading = false;
+            this.currentStep = 4; // AI Agents at Work
+          },
+          error: (err) => {
+            console.error('Step 3 upload failed:', err);
+            this.step3UploadLoading = false;
+            this.blueprintUploadLoading = false;
+            this.photosUploadLoading = false;
+            // Keep user on Step 3 and show errors (best-effort: use same err for whichever was attempted)
+            const statusVal = err?.status;
+            const status =
+              statusVal === 0 || typeof statusVal === 'number'
+                ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
+                : '';
+            const url = err?.url ? ` URL: ${err.url}` : '';
+            const hint =
+              statusVal === 0 ? ' Request blocked (CORS / network).' : statusVal === 404 ? ' Upload endpoint not found.' : '';
+            const msg = `Upload failed${status}.${hint}${url}`;
+            if (this.blueprintFile) this.blueprintUploadError = msg;
+            if (this.siteImageFiles.length > 0) this.photosUploadError = msg;
+          },
+        });
       }
     }
   }
@@ -562,9 +667,11 @@ export class ApplicationsComponent {
 
         if (res.next_question) {
           const textToShow = this.getNthQuestion(res.next_question, sentQuestionNum);
+          const intro = 'To proceed with your new construction permit, please provide the following details:';
+          const displayText = sentQuestionNum === 1 ? `${intro}\n\n${textToShow}` : textToShow;
           this.aiCompanionMessages.push({
             role: 'bot',
-            text: textToShow,
+            text: displayText,
           });
         }
 

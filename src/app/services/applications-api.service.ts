@@ -41,5 +41,25 @@ export class ApplicationsApiService {
     const base = environment.applicationsBaseUrl || '';
     return this.http.post<SowResponse>(`${base}/sow/sow`, payload);
   }
+
+  /**
+   * Upload blueprint: POST /upload/{app_id}/blueprint with multipart/form-data field "file" only.
+   * Matches API: single required "file" (binary); app_id in path.
+   */
+  uploadBlueprint(applicationId: string, file: File): Observable<unknown> {
+    const base = environment.applicationsBaseUrl || '';
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return this.http.post(`${base}/upload/${applicationId}/blueprint`, form);
+  }
+
+  uploadPhotos(applicationId: string, files: File[]): Observable<unknown> {
+    const base = environment.applicationsBaseUrl || '';
+    const form = new FormData();
+    form.append('application_id', applicationId);
+    form.append('folder', 'photos');
+    files.forEach((f) => form.append('files', f, f.name));
+    return this.http.post(`${base}/upload/${applicationId}/photos`, form);
+  }
 }
 
