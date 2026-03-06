@@ -1,8 +1,9 @@
-import { Component, computed, signal, HostListener } from '@angular/core';
+import { Component, computed, signal, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
+import { ApplicationsApiService, ApplicationListItem } from '../../../services/applications-api.service';
 import type { ViewApplicationRecord } from '../view-application/view-application.component';
 
 export interface Permit {
@@ -10,7 +11,7 @@ export interface Permit {
   address: string;
   type: string;
   zoningType: string;
-  status: 'New' | 'Approved' | 'Requested Revision' | 'Rejected';
+  status: string;
 }
 
 export interface AdminRecord {
@@ -40,16 +41,13 @@ export interface AdminRecord {
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
-export class DashboardComponent {
+export class DashboardComponent implements OnInit {
   title = 'Dashboard';
 
   // User view (existing)
-  permits: Permit[] = [
-    { permitId: 'BLR-001', address: 'MG Road', type: 'New Construction', zoningType: 'Residential', status: 'New' },
-    { permitId: 'BLR-002', address: 'Indiranagar', type: 'Remodel/Alteration', zoningType: 'Commercial', status: 'Approved' },
-    { permitId: 'BLR-003', address: 'Whitefield', type: 'Demolition', zoningType: 'Industrial', status: 'Rejected' },
-    { permitId: 'BLR-004', address: 'Koramangala', type: 'New Construction', zoningType: 'Mixed-Use', status: 'Requested Revision' },
-  ];
+  permits: Permit[] = [];
+  userPermitsLoading = false;
+  userPermitsError = '';
 
   // Admin view: filters + list + detail
   filterPermitType = signal<string>('');
@@ -138,11 +136,50 @@ export class DashboardComponent {
     });
   });
 
-  constructor(public auth: AuthService, private router: Router) {
+  constructor(
+    public auth: AuthService,
+    private router: Router,
+    private applicationsApi: ApplicationsApiService,
+  ) {
     // Auto-select first record for admin so right panel shows data (no tab selected by default)
     if (this.auth.currentRole === 'admin' && this.adminRecords.length > 0) {
       this.selectedRecord.set(this.adminRecords[0]);
     }
+  }
+
+  ngOnInit(): void {
+    if (this.auth.currentRole === 'user') {
+      this.loadUserApplications();
+    }
+  }
+
+  private loadUserApplications(): void {
+    this.userPermitsLoading = true;
+    this.userPermitsError = '';
+    this.applicationsApi.listApplications().subscribe({
+      next: (items: ApplicationListItem[]) => {
+        this.userPermitsLoading = false;
+        const toStr = (v: unknown) => (v === undefined || v === null ? '' : String(v));
+        this.permits = (items || []).map((it) => ({
+          permitId: toStr(it.permit_id ?? it.application_id ?? it.app_id) || '—',
+          address: toStr(it.project_address ?? it.address) || '—',
+          type: toStr(it.application_type ?? it.permit_type) || '—',
+          zoningType: toStr(it.zoning_type ?? it.zoningType) || '—',
+          status: toStr(it.status ?? it.application_status) || '—',
+        }));
+      },
+      error: (err) => {
+        console.error('List applications failed:', err);
+        this.userPermitsLoading = false;
+        const statusVal = err?.status;
+        const status =
+          statusVal === 0 || typeof statusVal === 'number'
+            ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
+            : '';
+        const url = err?.url ? ` URL: ${err.url}` : '';
+        this.userPermitsError = `Failed to load applications${status}.${url}`;
+      },
+    });
   }
 
   get isAdmin(): boolean {

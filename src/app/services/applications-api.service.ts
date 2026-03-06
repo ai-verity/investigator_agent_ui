@@ -26,6 +26,20 @@ export interface SowResponse {
   generated_sow: string | null;
 }
 
+export interface ApplicationListItem {
+  application_id?: string | number;
+  app_id?: string | number;
+  permit_id?: string | number;
+  project_address?: string;
+  address?: string;
+  application_type?: string;
+  permit_type?: string;
+  zoning_type?: string;
+  zoningType?: string;
+  status?: string;
+  application_status?: string;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -40,6 +54,12 @@ export class ApplicationsApiService {
   sendSowMessage(payload: SowRequest): Observable<SowResponse> {
     const base = environment.applicationsBaseUrl || '';
     return this.http.post<SowResponse>(`${base}/sow/sow`, payload);
+  }
+
+  /** List applications for user dashboard */
+  listApplications(): Observable<ApplicationListItem[]> {
+    const base = environment.applicationsBaseUrl || '';
+    return this.http.get<ApplicationListItem[]>(`${base}/applications`);
   }
 
   /**

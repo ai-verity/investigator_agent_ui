@@ -369,6 +369,14 @@
       <div class="left-panel left-panel-full">
         <div class="list-section">
           <div class="table-wrap">
+            @if (userPermitsError) {
+              <p class="error-text">{{ userPermitsError }}</p>
+            }
+            @if (userPermitsLoading) {
+              <div class="table-loader" aria-label="Loading applications">
+                <span class="spinner" aria-hidden="true"></span>
+              </div>
+            }
             <table class="permits-table">
               <thead>
                 <tr>
@@ -389,6 +397,11 @@
                         {{ permit.status }}
                       </span>
                     </td>
+                  </tr>
+                }
+                @if (!userPermitsLoading && permits.length === 0) {
+                  <tr>
+                    <td colspan="4">No applications found.</td>
                   </tr>
                 }
               </tbody>
