@@ -4,7 +4,6 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { ApplicationsApiService, ApplicationListItem } from '../../../services/applications-api.service';
-import type { ViewApplicationRecord } from '../view-application/view-application.component';
 
 export interface Permit {
   permitId: string;
@@ -176,8 +175,7 @@ export class DashboardComponent implements OnInit {
           statusVal === 0 || typeof statusVal === 'number'
             ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
             : '';
-        const url = err?.url ? ` URL: ${err.url}` : '';
-        this.userPermitsError = `Failed to load applications${status}.${url}`;
+        this.userPermitsError = `Failed to load applications${status}`;
       },
     });
   }
@@ -208,25 +206,8 @@ export class DashboardComponent implements OnInit {
   }
 
   selectPermitAsUser(permit: Permit): void {
-    const record = this.getRecordForPermitId(permit.permitId);
-    if (record) {
-      const viewRecord: ViewApplicationRecord = {
-        permitId: record.permitId,
-        applicant: record.applicant,
-        address: record.address,
-        zoningType: record.zoningType,
-        landAreaSqFt: record.landAreaSqFt,
-        existingBuiltUpArea: record.existingBuiltUpArea,
-        proposedBuiltUpArea: record.proposedBuiltUpArea,
-        noOfFloors: record.noOfFloors,
-        scopeOfWork: record.scopeOfWork,
-        permitType: record.permitType,
-        submittedDate: record.submittedDate,
-        submittedTime: record.submittedTime,
-        status: record.status,
-      };
-      this.router.navigate(['/view-application'], { state: { record: viewRecord } });
-    }
+    const appId = permit.permitId;
+    this.router.navigate(['/view-application'], { state: { appId } });
   }
 
   clearUserSelection(): void {

@@ -318,40 +318,54 @@
       </div>
     </form>
       </div>
+      @if (!scopeAgentChatOpen) {
+        <button type="button" class="scope-agent-trigger" (click)="openScopeAgentChat()" title="Scope of Work Agent – click to open">
+          <span class="scope-agent-trigger-text">I am your Scope of work Agent. I will help you draft a precise, code-compliant scope of work to ensure your application meets all regulatory standards for a swift review and successful approval.</span>
+          <span class="scope-agent-circle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </span>
+        </button>
+      }
+      @if (scopeAgentChatOpen) {
       <aside class="ai-companion-panel">
-        <h3 class="ai-companion-title">AI Companion</h3>
-        <p class="ai-companion-desc">Chat with the assistant for help on scope of work and documents.</p>
-        @if (sowError) {
-          <p class="error-text">{{ sowError }}</p>
-        }
-        <div class="ai-companion-messages">
-          @for (msg of aiCompanionMessages; track $index) {
-            <div class="ai-message" [class.ai-message-bot]="msg.role === 'bot'" [class.ai-message-user]="msg.role === 'user'" [class.ai-message-sow]="msg.isSow">
-              @if (msg.isSow) {
-                <div class="ai-message-sow-content" [innerHTML]="msg.text | markdown"></div>
-                <button type="button" class="btn-copy-sow-inline" (click)="copySowFromMessage(msg.text, $index)">
-                  {{ copySowMessageIndex === $index ? 'Copied!' : 'Copy' }}
-                </button>
-              } @else {
-                <span class="ai-message-text">{{ msg.text }}</span>
-              }
-            </div>
+          <div class="ai-companion-header">
+            <h3 class="ai-companion-title">Scope of Work Agent</h3>
+            <button type="button" class="ai-companion-collapse" (click)="scopeAgentChatOpen = false" title="Collapse chat">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 15l-6-6-6 6"/></svg>
+            </button>
+          </div>
+          @if (sowError) {
+            <p class="error-text">{{ sowError }}</p>
           }
-        </div>
-        <div class="ai-companion-input-wrap">
-          <input
-            type="text"
-            class="ai-companion-input"
-            placeholder="Type your message..."
-            [ngModel]="aiCompanionInput"
-            (ngModelChange)="aiCompanionInput = $event"
-            (keydown.enter)="sendAiMessage(); $event.preventDefault()"
-          />
-          <button type="button" class="ai-companion-send" [disabled]="sowLoading" (click)="sendAiMessage()">
-            @if (sowLoading) { ... } @else { Send }
-          </button>
-        </div>
+          <div class="ai-companion-messages">
+            @for (msg of aiCompanionMessages; track $index) {
+              <div class="ai-message" [class.ai-message-bot]="msg.role === 'bot'" [class.ai-message-user]="msg.role === 'user'" [class.ai-message-sow]="msg.isSow">
+                @if (msg.isSow) {
+                  <div class="ai-message-sow-content" [innerHTML]="msg.text | markdown"></div>
+                  <button type="button" class="btn-copy-sow-inline" (click)="copySowFromMessage(msg.text, $index)">
+                    {{ copySowMessageIndex === $index ? 'Copied!' : 'Copy' }}
+                  </button>
+                } @else {
+                  <span class="ai-message-text">{{ msg.text }}</span>
+                }
+              </div>
+            }
+          </div>
+          <div class="ai-companion-input-wrap">
+            <input
+              type="text"
+              class="ai-companion-input"
+              placeholder="Type your message..."
+              [ngModel]="aiCompanionInput"
+              (ngModelChange)="aiCompanionInput = $event"
+              (keydown.enter)="sendAiMessage(); $event.preventDefault()"
+            />
+            <button type="button" class="ai-companion-send" [disabled]="sowLoading" (click)="sendAiMessage()">
+              @if (sowLoading) { ... } @else { Send }
+            </button>
+          </div>
       </aside>
+      }
     </div>
   }
 
@@ -359,6 +373,12 @@
   @if (currentStep === 4) {
     <div class="agent-activity-screen">
       <p class="agent-activity-intro">Our AI agents are reviewing your application. This usually takes less than 2 minutes.</p>
+      @if (isReviewStreamActive) {
+        <p class="agent-activity-streaming">Receiving agent updates…</p>
+      }
+      @if (reviewStreamError) {
+        <p class="error-text agent-activity-error">{{ reviewStreamError }}</p>
+      }
       <div class="timeline">
         <div class="timeline-track">
           @for (event of agentActivityEvents; track event.agentKey + event.time) {

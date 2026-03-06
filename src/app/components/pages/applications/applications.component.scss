@@ -60,12 +60,13 @@
   }
 }
 
-// Step 3: form on left, AI Companion chatbot on right
+// Step 3: form on left (full width when panel closed); AI Companion panel appears on click
 .step3-layout {
   display: flex;
   gap: clamp(1rem, 2vw, 1.5rem);
   align-items: stretch;
   min-height: 320px;
+  position: relative;
 
   @media (max-width: 900px) {
     flex-direction: column;
@@ -74,8 +75,77 @@
 }
 
 .step3-content {
-  flex: 1;
+  flex: 1 1 100%;
   min-width: 0;
+}
+
+// Floating trigger: text + icon as one unit; icon sits just below text with clear relation
+.scope-agent-trigger {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0;
+  max-width: min(380px, calc(100vw - 2rem));
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 10;
+  transition: box-shadow 0.2s;
+
+  &:hover {
+    .scope-agent-trigger-text {
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+    }
+    .scope-agent-circle {
+      background: #16304a;
+      box-shadow: 0 4px 14px rgba(30, 58, 95, 0.35);
+    }
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible {
+    .scope-agent-trigger-text,
+    .scope-agent-circle {
+      box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.4);
+    }
+  }
+}
+
+.scope-agent-trigger-text {
+  padding: 0.75rem 1rem;
+  padding-bottom: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: #334155;
+  text-align: left;
+  white-space: normal;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px 12px 4px 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.2s;
+  margin-bottom: -8px;
+}
+
+.scope-agent-trigger .scope-agent-circle {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  margin-right: 8px;
+  margin-bottom: 4px;
+
+  svg {
+    width: 28px;
+    height: 28px;
+  }
 }
 
 .ai-companion-panel {
@@ -99,15 +169,6 @@
   }
 }
 
-.ai-companion-title {
-  margin: 0;
-  padding: 1rem 1.25rem;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #16213e;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  border-bottom: 1px solid #e5e7eb;
-}
 
 .ai-companion-desc {
   margin: 0;
@@ -115,6 +176,93 @@
   font-size: 0.85rem;
   color: #666;
   border-bottom: 1px solid #eee;
+}
+
+// Panel header with optional collapse (toggle) button
+.ai-companion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.ai-companion-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #16213e;
+}
+
+.ai-companion-collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+
+  &:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+// Scope of Work Agent – icon only when collapsed; click opens chat (title appears then)
+.scope-agent-icon-only {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  cursor: pointer;
+
+  &:hover {
+    .scope-agent-circle {
+      background: #16304a;
+      box-shadow: 0 4px 14px rgba(30, 58, 95, 0.35);
+    }
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible .scope-agent-circle {
+    box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.4);
+  }
+}
+
+.scope-agent-circle {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #1e3a5f;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  transition: background 0.2s, box-shadow 0.2s;
+
+  svg {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 .ai-companion-messages {
@@ -675,6 +823,22 @@
   font-size: 0.9rem;
   color: #475569;
   line-height: 1.45;
+}
+
+.agent-activity-error {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 0.875rem;
+}
+
+.agent-activity-streaming {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: #64748b;
 }
 
 .timeline {

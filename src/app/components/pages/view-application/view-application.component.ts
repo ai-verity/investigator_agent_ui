@@ -1,22 +1,30 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import { ApplicationsApiService, ApplicationDetail } from '../../../services/applications-api.service';
 
-/** Record data for view application page (passed from Dashboard). */
+/** Record data for view application page – all values from API, no hardcoding. */
 export interface ViewApplicationRecord {
   permitId: string;
+  applicantType?: string;
   applicant: string;
+  organization?: string;
+  email?: string;
+  phone?: string;
   address: string;
-  zoningType: string;
-  landAreaSqFt?: number;
-  existingBuiltUpArea?: number;
-  proposedBuiltUpArea?: number;
-  noOfFloors?: number;
+  zoningType?: string;
+  landAreaSqFt?: number | string;
+  existingBuiltUpArea?: number | string;
+  proposedBuiltUpArea?: number | string;
+  noOfFloors?: number | string;
   scopeOfWork?: string;
   permitType?: string;
   submittedDate?: string;
   submittedTime?: string;
   status?: string;
+  signatureFileName?: string;
+  blueprintFileName?: string;
+  siteImagesCount?: number | string;
 }
 
 @Component({
@@ -32,6 +40,8 @@ export class ViewApplicationComponent implements OnInit {
   steps = [1, 2, 3, 4, 5, 6];
 
   record: ViewApplicationRecord | null = null;
+  viewLoading = false;
+  viewError = '';
 
   agentActivityEvents = [
     { agentName: 'Intake Agent', agentKey: 'intake' as const, status: 'DONE', time: '11:43 am', description: "We're reviewing your uploaded documents and capturing key project information." },
@@ -47,20 +57,70 @@ export class ViewApplicationComponent implements OnInit {
     { agent: 'Inspector', findings: 'Unpermitted Shed', aiSuggestion: 'NA', status: 'Follow-up' },
   ];
 
-  constructor(private router: Router) {}
+  constructor(
+    private router: Router,
+    private applicationsApi: ApplicationsApiService,
+  ) {}
 
   ngOnInit(): void {
-    // getCurrentNavigation() is often null once the component initializes; use lastSuccessfulNavigation or history.state
-    let state = this.router.lastSuccessfulNavigation?.extras?.state as { record?: ViewApplicationRecord } | undefined;
-    if (!state?.record) {
-      state = this.router.getCurrentNavigation()?.extras?.state as { record?: ViewApplicationRecord } | undefined;
-    }
-    if (!state?.record && typeof history !== 'undefined' && history.state?.record) {
-      state = history.state as { record?: ViewApplicationRecord };
+    const state = (this.router.lastSuccessfulNavigation?.extras?.state ??
+      this.router.getCurrentNavigation()?.extras?.state ??
+      (typeof history !== 'undefined' ? history.state : null)) as { appId?: string; record?: ViewApplicationRecord } | null;
+
+    const appId = state?.appId;
+    if (appId) {
+      this.viewLoading = true;
+      this.viewError = '';
+      this.applicationsApi.viewApplication(appId).subscribe({
+        next: (item: ApplicationDetail) => {
+          this.viewLoading = false;
+          this.record = this.mapDetailToRecord(item);
+        },
+        error: () => {
+          this.viewLoading = false;
+          this.viewError = 'Failed to load application.';
+        },
+      });
+      return;
     }
     if (state?.record) {
       this.record = state.record;
     }
+  }
+
+  private mapDetailToRecord(item: ApplicationDetail): ViewApplicationRecord {
+    const toStr = (v: unknown) => (v === undefined || v === null ? '' : String(v).trim());
+    const toNum = (v: unknown): number | string | undefined => {
+      if (v === undefined || v === null) return undefined;
+      if (typeof v === 'number') return v;
+      const s = String(v).trim();
+      if (s === '') return undefined;
+      const n = Number(s);
+      return Number.isNaN(n) ? s : n;
+    };
+    const opt = (v: unknown) => (v === undefined || v === null || toStr(v) === '' ? undefined : toStr(v));
+    return {
+      permitId: toStr(item.application_id ?? item.permit_id) || '',
+      applicantType: opt(item.applicant_type),
+      applicant: toStr(item.owner_name ?? item.full_name) || '',
+      organization: opt(item.organization),
+      email: opt(item.email),
+      phone: opt(item.phone),
+      address: toStr(item.project_address ?? item.address) || '',
+      zoningType: opt(item.zoning_type),
+      landAreaSqFt: toNum(item.land_area_sq_ft),
+      existingBuiltUpArea: toNum(item.existing_built_up_area),
+      proposedBuiltUpArea: toNum(item.proposed_built_up_area),
+      noOfFloors: toNum(item.no_of_floors),
+      scopeOfWork: opt(item.sow_text ?? item.describe_proposed_work),
+      permitType: opt(item.application_type),
+      submittedDate: opt(item.submitted_date),
+      submittedTime: opt(item.submitted_time),
+      status: opt(item.status),
+      signatureFileName: opt(item.signature_file_name),
+      blueprintFileName: opt(item.blueprint_file_name),
+      siteImagesCount: toNum(item.site_images_count),
+    };
   }
 
   getStepTitle(step: number): string {

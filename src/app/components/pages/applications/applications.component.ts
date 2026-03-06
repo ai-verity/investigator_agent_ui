@@ -1,10 +1,10 @@
-import { Component } from '@angular/core';
+import { Component, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { ApplicationsApiService, StartApplicationRequest, SowRequest, SowResponse } from '../../../services/applications-api.service';
+import { ApplicationsApiService, StartApplicationRequest, SowRequest, SowResponse, ReviewStreamEvent } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
-import { forkJoin, of } from 'rxjs';
+import { forkJoin, of, Subscription } from 'rxjs';
 
 type ApplicantType = 'individual' | 'business' | 'ngo';
 
@@ -49,7 +49,7 @@ export interface AgentActivityEvent {
   templateUrl: './applications.component.html',
   styleUrl: './applications.component.scss',
 })
-export class ApplicationsComponent {
+export class ApplicationsComponent implements OnDestroy {
   currentStep = 1;
   totalSteps = 6;
   steps = [1, 2, 3, 4, 5, 6];
@@ -79,9 +79,14 @@ export class ApplicationsComponent {
   step3UploadLoading = false;
   readonly describeWorkMaxLength = 2000;
 
-  aiCompanionMessages: { role: 'user' | 'bot'; text: string; isSow?: boolean }[] = [
-    { role: 'bot', text: "Hi! I'm your AI companion for this step. Ask me anything about scope of work or document upload." },
-  ];
+  /** Review stream (Step 4) subscription; unsubscribed on destroy. */
+  reviewStreamSubscription: Subscription | null = null;
+  reviewStreamError = '';
+
+  /** When false, show Scope of Work Agent intro popup; when true, show chatbot. */
+  scopeAgentChatOpen = false;
+
+  aiCompanionMessages: { role: 'user' | 'bot'; text: string; isSow?: boolean }[] = [];
   aiCompanionInput = '';
 
   /** Index of the SOW message that shows "Copied!" after copy (reset after 2s). */
@@ -143,12 +148,8 @@ export class ApplicationsComponent {
     },
   ];
 
-  complianceFindings: ComplianceFinding[] = [
-    { agent: 'Intake', findings: 'Missing Fire Egress', aiSuggestion: 'Add Fire Egress', status: 'Critical' },
-    { agent: 'Code Enforcement', findings: 'Railing Height 34"', aiSuggestion: 'Railing Height 36"', status: 'Violation' },
-    { agent: 'Planner', findings: 'Impervious 44.2%', aiSuggestion: 'Impervious 48%', status: 'Warning' },
-    { agent: 'Inspector', findings: 'Unpermitted Shed', aiSuggestion: 'NA', status: 'Follow-up' },
-  ];
+  /** Filled from review stream agent_done events (finding objects); empty until stream delivers. */
+  complianceFindings: ComplianceFinding[] = [];
 
   submissionPermitId = 'BLR-006';
   estimatedReviewDays = 18;
@@ -388,7 +389,9 @@ export class ApplicationsComponent {
             this.step3UploadLoading = false;
             this.blueprintUploadLoading = false;
             this.photosUploadLoading = false;
-            this.currentStep = 4; // AI Agents at Work
+            this.reviewStreamError = '';
+            this.currentStep = 4; // Move to Step 4 first, then start streaming
+            this.startReviewStream(); // Keeps running until stream ends; statuses update from events, then all set to Completed on complete
           },
           error: (err) => {
             console.error('Step 3 upload failed:', err);
@@ -410,6 +413,104 @@ export class ApplicationsComponent {
           },
         });
       }
+    }
+  }
+
+  /** Start GET /review/{app_id}/stream and update Step 4 agent statuses from each event. Runs until stream ends or API sends done. */
+  startReviewStream(): void {
+    this.reviewStreamSubscription?.unsubscribe();
+    this.reviewStreamSubscription = null;
+    this.reviewStreamError = '';
+
+    this.intakeAgentStatus = 'Reviewing your documents…';
+    this.codeAgentStatus = 'Reviewing building regulations…';
+    this.plannerAgentStatus = 'Reviewing zoning requirements…';
+    this.inspectorAgentStatus = 'Waiting';
+
+    // Reset timeline times so they update from the stream
+    this.agentActivityEvents = this.agentActivityEvents.map((e) => ({ ...e, time: '—' }));
+
+    this.reviewStreamSubscription = this.applicationsApi.getReviewStream(this.applicationId).subscribe({
+      next: (event: ReviewStreamEvent) => this.applyReviewStreamEvent(event),
+      error: (err) => {
+        this.reviewStreamError = err?.message || 'Review stream failed. Set Bearer token (e.g. in Settings or environment.reviewStreamAuthToken) if the API requires authentication.';
+        this.reviewStreamSubscription = null;
+      },
+      complete: () => {
+        this.reviewStreamSubscription = null;
+        if (!this.reviewStreamError) {
+          this.intakeAgentStatus = 'Completed';
+          this.codeAgentStatus = 'Completed';
+          this.plannerAgentStatus = 'Completed';
+          this.inspectorAgentStatus = 'Completed';
+        }
+      },
+    });
+  }
+
+  /** Format current time as "h:mm a" (e.g. 2:46 pm) for timeline display. */
+  private getCurrentTimeFormatted(): string {
+    const d = new Date();
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const h12 = h % 12 || 12;
+    return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+  }
+
+  /** Update the timeline time for the given agent to current time. */
+  private updateAgentEventTime(agentKey: 'intake' | 'code' | 'planner' | 'inspector'): void {
+    const time = this.getCurrentTimeFormatted();
+    this.agentActivityEvents = this.agentActivityEvents.map((e) =>
+      e.agentKey === agentKey ? { ...e, time } : e
+    );
+  }
+
+  /** Map SSE event (event_type, agent_name, finding) to Step 4 agent statuses and Step 5 compliance findings. Only one agent shows "Reviewing…" at a time (line by line). */
+  private applyReviewStreamEvent(event: ReviewStreamEvent): void {
+    const name = (event.agent_name || '').toLowerCase();
+    const isStart = event.event_type === 'agent_start';
+    const isDone = event.event_type === 'agent_done';
+
+    let agentKey: 'intake' | 'code' | 'planner' | 'inspector' | null = null;
+    if (name.includes('intake')) agentKey = 'intake';
+    else if (name.includes('code')) agentKey = 'code';
+    else if (name.includes('planner') || name.includes('planning')) agentKey = 'planner';
+    else if (name.includes('inspector')) agentKey = 'inspector';
+
+    if (isStart) {
+      // Ensure only one agent is "Reviewing" at a time: clear any other agent currently in progress to Waiting
+      if (this.intakeAgentStatus === 'Reviewing your documents…') this.setIntakeAgentStatus('Waiting');
+      if (this.codeAgentStatus === 'Reviewing building regulations…') this.setCodeAgentStatus('Waiting');
+      if (this.plannerAgentStatus === 'Reviewing zoning requirements…') this.setPlannerAgentStatus('Waiting');
+      if (this.inspectorAgentStatus === 'Finalizing your compliance summary…') this.setInspectorAgentStatus('Waiting');
+      // Then set the current agent to Reviewing and update its time
+      if (agentKey === 'intake') this.setIntakeAgentStatus('Reviewing your documents…');
+      else if (agentKey === 'code') this.setCodeAgentStatus('Reviewing building regulations…');
+      else if (agentKey === 'planner') this.setPlannerAgentStatus('Reviewing zoning requirements…');
+      else if (agentKey === 'inspector') this.setInspectorAgentStatus('Finalizing your compliance summary…');
+      if (agentKey) this.updateAgentEventTime(agentKey);
+    } else if (isDone) {
+      if (agentKey === 'intake') this.setIntakeAgentStatus('Completed');
+      else if (agentKey === 'code') this.setCodeAgentStatus('Completed');
+      else if (agentKey === 'planner') this.setPlannerAgentStatus('Completed');
+      else if (agentKey === 'inspector') this.setInspectorAgentStatus('Completed');
+      if (agentKey) this.updateAgentEventTime(agentKey);
+    }
+
+    if (isDone && event.finding) {
+      const f = event.finding;
+      const severity = (f.severity || '').toLowerCase();
+      let status: FindingStatus = 'Follow-up';
+      if (severity === 'critical') status = 'Critical';
+      else if (severity === 'warning') status = 'Warning';
+      else if (severity === 'violation') status = 'Violation';
+      this.complianceFindings = [...this.complianceFindings, {
+        agent: f.agent || event.agent_name || '—',
+        findings: f.finding || '',
+        aiSuggestion: f.detail ?? '',
+        status,
+      }];
     }
   }
 
@@ -565,15 +666,42 @@ export class ApplicationsComponent {
   }
 
   /**
-   * When the API returns multiple numbered questions in one string (e.g. "1) ... 2) ... 3) ..."),
-   * return the N-th numbered block so we show question 1, then 2, then 3, and so on.
+   * When the API returns multiple numbered questions in one string (e.g. "1) ... 2) ..." or "1. ... 2. ..."),
+   * return only the N-th block so we show one question at a time: first on open, then 2nd after first answer, etc.
    */
   private getNthQuestion(nextQuestion: string, n: number): string {
     if (!nextQuestion?.trim()) return nextQuestion || '';
-    const blocks = nextQuestion.match(/\d+\)\s*[^]*?(?=\s*\d+\)\s|$)/gs);
-    if (!blocks || blocks.length === 0) return nextQuestion.trim();
-    const index = Math.max(0, Math.min((n || 1) - 1, blocks.length - 1));
-    return blocks[index].trim();
+    const raw = nextQuestion.trim();
+    const oneBasedIndex = Math.max(1, n || 1);
+
+    // Match blocks that start with "1) ", "2) ", "1. ", "2. " etc. (digit + ) or . + space), content until next such pattern or end
+    const blockRegex = /\d+[\).]\s*[\s\S]*?(?=\d+[\).]\s|$)/gi;
+    const blocks = raw.match(blockRegex);
+    if (blocks && blocks.length > 0) {
+      const index = Math.min(oneBasedIndex - 1, blocks.length - 1);
+      return blocks[index].trim();
+    }
+
+    // Fallback: split by newline when line starts with number + ) or .
+    const lines = raw.split(/\n/);
+    const result: string[] = [];
+    let current: string[] = [];
+    for (const line of lines) {
+      if (/^\s*\d+[\).]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) {
+        if (current.length > 0) result.push(current.join('\n').trim());
+        current = [line];
+      } else {
+        current.push(line);
+      }
+    }
+    if (current.length > 0) result.push(current.join('\n').trim());
+
+    if (result.length > 0) {
+      const index = Math.min(oneBasedIndex - 1, result.length - 1);
+      return result[index];
+    }
+
+    return oneBasedIndex === 1 ? raw : raw.split(/\n\n+/)[0]?.trim() || raw;
   }
 
   /** Application data (applicationId + steps data) for API or persistence. */
@@ -639,6 +767,79 @@ export class ApplicationsComponent {
     this.router.navigate(['/dashboard']);
   }
 
+  ngOnDestroy(): void {
+    this.reviewStreamSubscription?.unsubscribe();
+    this.reviewStreamSubscription = null;
+  }
+
+  /** True while the review stream is active (Step 4); used to show "Receiving agent updates…" until all agents complete. */
+  get isReviewStreamActive(): boolean {
+    return this.reviewStreamSubscription != null;
+  }
+
+  /** Called when user clicks the Scope of Work Agent icon; opens chat and fetches first question if not yet sent. */
+  openScopeAgentChat(): void {
+    this.scopeAgentChatOpen = true;
+    if (!this.applicationId) {
+      this.aiCompanionMessages.push({
+        role: 'bot',
+        text: 'Please complete Step 2 (Save & Continue) first so we can start your Scope of Work questionnaire.',
+      });
+      return;
+    }
+    if (!this.firstSowRequestSent) {
+      this.fetchFirstSowQuestion();
+    }
+  }
+
+  /** Call SOW API with empty question_id and response to get the first question; show it in chat. */
+  private fetchFirstSowQuestion(): void {
+    this.sowLoading = true;
+    this.sowError = '';
+    const payload: SowRequest = {
+      application_id: this.applicationId,
+      question_id: '',
+      response: '',
+    };
+    this.firstSowRequestSent = true;
+
+    this.applicationsApi.sendSowMessage(payload).subscribe({
+      next: (res: SowResponse) => {
+        this.sowLoading = false;
+        this.sowQuestionId = '1'; // next request will be user's answer to question 1
+
+        if (res.next_question) {
+          const textToShow = this.getNthQuestion(res.next_question, 1);
+          const intro = 'To proceed with your new construction permit, please provide the following details:';
+          const displayText = `${intro}\n\n${textToShow}`;
+          this.aiCompanionMessages.push({
+            role: 'bot',
+            text: displayText,
+          });
+        }
+
+        if (res.generated_sow) {
+          const beautified = this.getBeautifiedSow(res.generated_sow);
+          this.aiCompanionMessages.push({
+            role: 'bot',
+            text: beautified,
+            isSow: true,
+          });
+        }
+      },
+      error: (err) => {
+        console.error('SOW fetch first question error:', err);
+        this.sowLoading = false;
+        this.firstSowRequestSent = false;
+        this.sowError = 'Unable to load the first question. Please try again.';
+        this.aiCompanionMessages.push({
+          role: 'bot',
+          text: 'Sorry, I could not load the first question right now. Please try again.',
+        });
+      },
+    });
+  }
+
   sendAiMessage(): void {
     const text = this.aiCompanionInput?.trim();
     if (!text || this.sowLoading) return;
@@ -666,12 +867,13 @@ export class ApplicationsComponent {
         this.sowQuestionId = String(nextNum);
 
         if (res.next_question) {
-          const textToShow = this.getNthQuestion(res.next_question, sentQuestionNum);
-          const intro = 'To proceed with your new construction permit, please provide the following details:';
-          const displayText = sentQuestionNum === 1 ? `${intro}\n\n${textToShow}` : textToShow;
+          // sentQuestionNum = question user just answered; show the NEXT question (e.g. 2nd block)
+          const nextQuestionIndex = sentQuestionNum + 1;
+          const textToShow = this.getNthQuestion(res.next_question, nextQuestionIndex);
+          // Do not prepend the intro here — intro is only for the very first question (in fetchFirstSowQuestion).
           this.aiCompanionMessages.push({
             role: 'bot',
-            text: displayText,
+            text: textToShow,
           });
         }
 

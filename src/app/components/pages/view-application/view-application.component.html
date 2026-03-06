@@ -1,7 +1,14 @@
 <div class="view-application" [class.step3-active]="currentStep === 3">
   <h2 class="screen-title">{{ getStepTitle(currentStep) }}</h2>
 
-  @if (!record) {
+  @if (viewLoading) {
+    <p class="view-loading">Loading application…</p>
+  } @else if (viewError) {
+    <p class="error-text">{{ viewError }}</p>
+    <div class="form-actions">
+      <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
+    </div>
+  } @else if (!record) {
     <p class="no-record-message">No application selected. Please select a record from the dashboard.</p>
     <div class="form-actions">
       <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
@@ -31,7 +38,7 @@
       <div class="view-form applicant-form">
         <div class="form-row">
           <span class="form-label">Applicant Type:</span>
-          <span class="view-value">Individual</span>
+          <span class="view-value">{{ record.applicantType ?? '—' }}</span>
         </div>
         <div class="form-row">
           <span class="form-label">Full Name:</span>
@@ -39,15 +46,15 @@
         </div>
         <div class="form-row">
           <span class="form-label">Organization:</span>
-          <span class="view-value">—</span>
+          <span class="view-value">{{ record.organization ?? '—' }}</span>
         </div>
         <div class="form-row">
           <span class="form-label">Email:</span>
-          <span class="view-value">applicant@example.com</span>
+          <span class="view-value">{{ record.email ?? '—' }}</span>
         </div>
         <div class="form-row">
           <span class="form-label">Phone:</span>
-          <span class="view-value">+1 555-0100</span>
+          <span class="view-value">{{ record.phone ?? '—' }}</span>
         </div>
         <div class="form-row">
           <span class="form-label">Address:</span>
@@ -55,7 +62,7 @@
         </div>
         <div class="form-row">
           <span class="form-label">Upload Signature:</span>
-          <span class="view-value view-mode-placeholder">—</span>
+          <span class="view-value view-mode-placeholder">{{ record.signatureFileName ?? '—' }}</span>
         </div>
         <div class="form-actions">
           <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
@@ -70,7 +77,7 @@
       <div class="view-form applicant-form property-form">
         <div class="form-row">
           <span class="form-label">Zoning Type:</span>
-          <span class="view-value">{{ record.zoningType }}</span>
+          <span class="view-value">{{ record.zoningType ?? '—' }}</span>
         </div>
         <div class="form-row">
           <span class="form-label">Land Area (sq ft):</span>
@@ -105,11 +112,11 @@
         <div class="view-value-block">{{ record.scopeOfWork ?? '—' }}</div>
         <div class="form-row">
           <span class="form-label">Upload Structural Blueprint:</span>
-          <span class="view-value view-mode-placeholder">—</span>
+          <span class="view-value view-mode-placeholder">{{ record.blueprintFileName ?? '—' }}</span>
         </div>
         <div class="form-row">
           <span class="form-label">Upload Site Images:</span>
-          <span class="view-value view-mode-placeholder">—</span>
+          <span class="view-value view-mode-placeholder">{{ record.siteImagesCount != null ? record.siteImagesCount + ' image(s)' : '—' }}</span>
         </div>
         <div class="form-actions">
           <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
@@ -199,8 +206,8 @@
         <section class="screen6-section">
           <h3 class="screen6-section-title">PERMIT SUMMARY</h3>
           <dl class="screen6-details">
-            <dt>Zoning:</dt><dd>{{ record.zoningType }}</dd>
-            <dt>Proposed Built-up Area:</dt><dd>{{ record.proposedBuiltUpArea ?? '—' }} sq ft</dd>
+            <dt>Zoning:</dt><dd>{{ record.zoningType ?? '—' }}</dd>
+            <dt>Proposed Built-up Area:</dt><dd>{{ record.proposedBuiltUpArea ?? '—' }}{{ record.proposedBuiltUpArea != null ? ' sq ft' : '' }}</dd>
             <dt>No. of Floors:</dt><dd>{{ record.noOfFloors ?? '—' }}</dd>
           </dl>
         </section>

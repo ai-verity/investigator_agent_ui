@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 
 const AUTH_KEY = 'investigator-agent-auth';
 const AUTH_ROLE_KEY = 'investigator-agent-role';
+const AUTH_TOKEN_KEY = 'investigator-agent-token';
 
 export type AuthRole = 'user' | 'admin';
 
@@ -63,7 +64,18 @@ export class AuthService {
     this.role = 'user';
     sessionStorage.removeItem(AUTH_KEY);
     sessionStorage.removeItem(AUTH_ROLE_KEY);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
     this.router.navigate(['/login']);
+  }
+
+  /** Bearer token for APIs that require Authorization (e.g. review stream). Set from login response or use environment.reviewStreamAuthToken. */
+  getToken(): string {
+    return sessionStorage.getItem(AUTH_TOKEN_KEY) || '';
+  }
+
+  setToken(token: string): void {
+    if (token) sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    else sessionStorage.removeItem(AUTH_TOKEN_KEY);
   }
 
   private getStoredAuth(): { authenticated: boolean; role: AuthRole } {
