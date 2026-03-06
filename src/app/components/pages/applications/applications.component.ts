@@ -77,7 +77,7 @@ export class ApplicationsComponent implements OnDestroy {
   photosUploadLoading = false;
   photosUploadError = '';
   step3UploadLoading = false;
-  readonly describeWorkMaxLength = 2000;
+  readonly describeWorkMaxLength = 5000;
 
   /** Review stream (Step 4) subscription; unsubscribed on destroy. */
   reviewStreamSubscription: Subscription | null = null;
