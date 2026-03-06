@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from common.database import init_db
-from backend.routers import auth, sow, applications
+from backend.routers import auth, sow, applications, uploads, review
 
 # from backend.routers.applications import router as applications_router
 from dotenv import load_dotenv
@@ -60,7 +60,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(applications.router)
 app.include_router(sow.router)
-# app.include_router(review.router)
+app.include_router(uploads.router)
+app.include_router(review.router)
 
 
 @app.get("/health", tags=["meta"])

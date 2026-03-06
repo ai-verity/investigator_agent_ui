@@ -19,7 +19,7 @@ from typing import Optional
 from crewai import Agent, Crew, Process, Task
 from crewai.tools import tool
 
-from backend.models.schemas import PermitSession
+from backend.models.schemas import PermitSession,ConversationTurn
 from backend.tools.nim_llm import create_nim_llm
 from backend.austin import *
 
@@ -240,14 +240,15 @@ class SOWCrew:
         return str(result)
 
     def run_interactive(
-        self, user_response, initial_session: Optional[PermitSession] = None
+        self, user_response, initial_session: Optional[PermitSession] = None,application_id: str = ""
     ) -> PermitSession:
         """
         Run a fully interactive conversational permit intake session.
         Returns the completed PermitSession with generated SOW.
         """
         session = initial_session or PermitSession(city=self.city_key)
-
+        self._current_application_id = application_id 
+        print(session)
         print(f"\n{'=' * 65}")
         print(f"  City of {self.city_cfg.city_name} Permit Application Assistant")
         print(f"  Development Services Department")
@@ -257,14 +258,19 @@ class SOWCrew:
         print("Type 'done' at any time to proceed with available information.\n")
 
         # ── Collect mandatory form fields upfront ──────────────────
-        session.conversation_history.append({"role": "user", "content": user_response})
+        if user_response:
+            session.conversation_history.append(ConversationTurn(role="user", content=user_response))
+
 
         # ── Conversational Q&A loop (≤5 questions) ─────────────────
         intake_agent = self._intake_agent()
 
         question = None
 
-        if session.questions_asked < 5 and not session.is_complete:
+       # session.questions_asked += 1   # move this UP, before the if-block
+        session.questions_asked += 1
+
+        if session.questions_asked <= 5 and not session.is_complete:
             intake_task = self._intake_task(intake_agent, session)
             crew = Crew(
                 agents=[intake_agent],
@@ -312,19 +318,6 @@ class SOWCrew:
                 except json.JSONDecodeError:
                     pass
 
-            # # Parse agent response
-            # try:
-            #     # Strip markdown fences if present
-            #     clean = raw.strip()
-            #     if clean.startswith("```"):
-            #         clean = "\n".join(clean.split("\n")[1:])
-            #         clean = clean.rsplit("```", 1)[0]
-            #     response = json.loads(clean)
-            # except json.JSONDecodeError:
-            #     # Fallback: treat as plain question
-            #     response = {"question": raw, "is_complete": False, "extracted_data": {}}
-
-            # Update session with extracted data
             extracted = response.get("extracted_data", {})
             self._apply_extracted_data(session, extracted)
 
@@ -334,46 +327,19 @@ class SOWCrew:
             if not question:
                 session.is_complete = True
 
-            # Present question to user
-            session.questions_asked += 1
             print(f"\nQuestion {session.questions_asked}/5:")
             print(f"  {question}\n")
-
-            # # Check for file attachment offer
-            # if session.questions_asked == 1:
-            #     print("  (You may also enter a file path to attach a blueprint/photo,")
-            #     print("   or press Enter to skip)\n")
-
-            # user_input = input("Your answer: ").strip()
-
-            # if user_input.lower() == "done":
-            #     session.is_complete = True
-            #     break
-
-            # Check if user provided a file path
-            # if os.path.exists(user_input) and user_input.lower().endswith(
-            #     (".jpg", ".jpeg", ".png", ".webp", ".pdf")
-            # ):
-            #     print("  📎 Analyzing attached file…")
-            #     analysis = self.image_tool._run(user_input, context=session.short_scope)
-            #     session.image_paths.append(user_input)
-            #     session.image_analyses.append(f"File: {user_input}\n{analysis}")
-            #     print(f"  ✓ File analyzed.\n")
-            #     # Also record the text part of their answer
-            #     user_text = input("  Any additional context for this file? ").strip()
-            #     if user_text:
-            #         user_input = f"[Attached: {user_input}] {user_text}"
-            #     else:
-            #         user_input = f"[Attached and analyzed: {user_input}]"
-
-            # Store in conversation history
-            session.conversation_history.append(
-                {"role": "assistant", "content": question}
-            )
-            session.generated_sow = None
+            session.conversation_history.append(ConversationTurn(role="assistant", content=question))   
+            session.generated_sow = ""
         else:
             session.generated_sow = self.run_batch(session)
-
+            from backend.models.database import update_application_sow_state
+            update_application_sow_state(
+                application_id=self._current_application_id,
+                sow_question_answer=json.dumps({"__permit_session__": session.model_dump()}),
+                sow_text=session.generated_sow,
+                status="complete",
+            )
         return (
             session.questions_asked,
             question,

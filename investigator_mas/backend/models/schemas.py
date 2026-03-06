@@ -30,7 +30,20 @@ class LoginResponse(BaseModel):
 
 # ── Application lifecycle ──────────────────────────────────────────────────────
 
-
+class ApplicationListItem(BaseModel):
+    application_id: str
+    date: str
+    application_type: str
+    owner_name: str
+    zoning_type: str
+    project_address: str
+    sow_text: str
+    status: str
+    workflow_status: str
+    stage: str
+    status_message: str
+    compliance_score: int
+    
 class ApplicationPayload(BaseModel):
     application_id: str
     date: datetime
@@ -38,6 +51,7 @@ class ApplicationPayload(BaseModel):
     owner_name: Optional[str] = None
     project_address: Optional[str] = None
     zoning_type: Optional[str] = None
+    sow_text: Optional[str] = None
 
 
 class SOWPayload(BaseModel):
@@ -54,14 +68,26 @@ class SOWResponsePayload(BaseModel):
     generated_sow: Optional[str] = None
 
 
+# class SOWInput(BaseModel):
+#     application_id: str
+#     application_type: str = Field(..., pattern="^(REN|NEW)$")
+#     owner_name: Optional[str] = None
+#     project_address: Optional[str] = None
+#     zoning_type: Optional[str] = None
+#     sow_question_answer: dict | None = (None,)
+#     sow_text: str | None = None
+#     curr_question_id: str
+#     curr_response: str
+
 class SOWInput(BaseModel):
     application_id: str
     application_type: str = Field(..., pattern="^(REN|NEW)$")
     owner_name: Optional[str] = None
     project_address: Optional[str] = None
     zoning_type: Optional[str] = None
-    sow_question_answer: dict | None = None
+    sow_question_answer: dict | None = None   # ← also remove the trailing comma (,) bug here
     sow_text: str | None = None
+    status: str = "pending"                   # ← ADD THIS
     curr_question_id: str
     curr_response: str
 

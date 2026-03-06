@@ -13,29 +13,49 @@ from typing import Generator
 from backend.agents.sow_crew import SOWCrew
 from backend.models.schemas import PermitSession, SOWInput, SOWResponsePayload
 
-ps = None
-
+from backend.models.database import get_application_by_id, update_application_sow_state
+import json
 
 def generate_sow(input: SOWInput):
-    city = "austin"
-    if input.project_address:
-        addr = input.project_address.lower()
-        if "austin" in addr:
-            city = "austin"
+    city = "austin" if "austin" in (input.project_address or "").lower() else "unknown"
     sc = SOWCrew(city)
-    global ps
-    if not ps:
+    ps = None 
+
+    # Load existing session from DB (sow_question_answer stores serialized PermitSession)
+    raw_state = input.sow_question_answer or {}
+    if raw_state.get("__permit_session__"):
+        session_data = raw_state["__permit_session__"]
+        # Sanitize None → "" for all str fields that don't allow None
+        for str_field in ("generated_sow", "guidelines", "short_scope", 
+                        "occupancy_type", "special_conditions", "city",
+                        "project_address", "owner_name", "application_type", "zoning_type"):
+            if session_data.get(str_field) is None:
+                session_data[str_field] = ""
+        ps = PermitSession(**session_data)
+    else:
         ps = PermitSession(
             city=city,
-            project_address=input.project_address,
-            owner_name=input.owner_name,
+            project_address=input.project_address or "",
+            owner_name=input.owner_name or "",
             application_type=input.application_type,
-            zoning_type=input.zoning_type,
-            short_scope=input.sow_text,
+            zoning_type=input.zoning_type or "",
+            short_scope=input.sow_text or "",
         )
+
     question_id, question, is_done, generated_sow = sc.run_interactive(
-        input.curr_response, ps
+    input.curr_response, ps, application_id=input.application_id
+)
+
+    # Persist updated session back to DB
+    new_state = {"__permit_session__": ps.model_dump()}
+    status = update_application_sow_state(
+        application_id=input.application_id,
+        sow_question_answer=json.dumps(new_state),
+        sow_text=generated_sow or "",
+        status="complete" if is_done else "pending",
     )
+    print("DB status",status)
+
     return SOWResponsePayload(
         application_id=input.application_id,
         next_question_id=str(question_id),
@@ -43,6 +63,33 @@ def generate_sow(input: SOWInput):
         is_done=is_done,
         generated_sow=generated_sow,
     )
+# ps = None
+
+
+# def generate_sow(input: SOWInput):
+#     if "austin" in input.project_address.lower():
+#         city = "austin"
+#     sc = SOWCrew(city)
+#     global ps
+#     if not ps:
+#         ps = PermitSession(
+#             city=city,
+#             project_address=input.project_address,
+#             owner_name=input.owner_name,
+#             application_type=input.application_type,
+#             zoning_type=input.zoning_type,
+#             short_scope=input.sow_text,
+#         )
+#     question_id, question, is_done, generated_sow = sc.run_interactive(
+#         input.curr_response, ps
+#     )
+#     return SOWResponsePayload(
+#         application_id=input.application_id,
+#         next_question_id=str(question_id),
+#         next_question=question,
+#         is_done=is_done,
+#         generated_sow=generated_sow,
+#     )
 
 
 # # ── NIM config ─────────────────────────────────────────────────────────────────

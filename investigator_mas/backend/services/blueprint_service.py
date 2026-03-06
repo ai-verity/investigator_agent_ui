@@ -42,17 +42,49 @@ from backend.models.database import (
     get_blueprint_analysis,
 )
 
-# ── NIM config ─────────────────────────────────────────────────────────────────
-NIM_BASE_URL     = os.environ.get("NIM_BASE_URL", "https://integrate.api.nvidia.com/v1")
-GEMMA_MODEL      = "google/gemma-3-27b-it"   # vision-capable on NIM
+from backend.tools.nim_llm import create_nim_llm
+from backend.austin import *
 
 
-def _nim_api_key() -> str:
-    key = os.environ.get("NVIDIA_API_KEY", "")
-    if not key:
-        raise RuntimeError("NVIDIA_API_KEY environment variable is not set.")
-    return key
+# ─────────────────────────────────────────────
+#  Shared LLM  (all agents use same NIM model)
+# ─────────────────────────────────────────────
 
+
+def _llm():
+    return create_nim_llm()
+
+UPLOAD_ROOT = "uploads"
+
+def _get_blueprint_path(app_id: int) -> tuple[bytes, str]:
+    """
+    Read the first file found in uploads/{app_id}/blueprint/.
+    Returns (raw_bytes, mime_type).
+    Raises RuntimeError if folder is empty or missing.
+    """
+    blueprint_dir = os.path.join(UPLOAD_ROOT, str(app_id), "blueprint")
+    if not os.path.isdir(blueprint_dir):
+        raise RuntimeError(f"No blueprint folder found for app_id={app_id}.")
+
+    files = [
+        f for f in os.listdir(blueprint_dir)
+        if not f.startswith(".")
+    ]
+    if not files:
+        raise RuntimeError(f"Blueprint folder is empty for app_id={app_id}.")
+
+    filepath = os.path.join(blueprint_dir, files[0])
+    ext = os.path.splitext(files[0])[1].lower()
+    mime_map = {
+        ".pdf":  "application/pdf",
+        ".png":  "image/png",
+        ".jpg":  "image/jpeg",
+        ".jpeg": "image/jpeg",
+    }
+    mime = mime_map.get(ext, "image/png")
+
+    with open(filepath, "rb") as f:
+        return f.read(), mime
 
 # ── PDF → PNG conversion ───────────────────────────────────────────────────────
 
@@ -185,7 +217,8 @@ def analyse_blueprint(app_id: int, force_refresh: bool = False) -> BlueprintAnal
             )
 
     # ── Fetch blueprint bytes ─────────────────────────────────────────────────
-    raw_bytes, mime = get_blueprint_bytes(app_id)
+    #raw_bytes, mime = get_blueprint_bytes(app_id)
+    raw_bytes, mime = _get_blueprint_path(app_id)
     if not raw_bytes:
         raise RuntimeError(
             f"No blueprint found for app_id={app_id}. "

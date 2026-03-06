@@ -241,6 +241,15 @@ def _validate_sow_qa(sow_qa: dict) -> None:
                 f"questions[{i}] must have both 'question' and 'answer' keys."
             )
 
+def update_application_sow_state(application_id: str, sow_question_answer: str, sow_text: str, status: str):
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE applications 
+            SET sow_question_answer = ?, sow_text = ?, status = ?
+            WHERE application_id = ?""",
+            (sow_question_answer, sow_text, status, application_id),
+        )
+    return True
 
 # CREATE
 def create_application(
@@ -262,6 +271,7 @@ def create_application(
     """
     # _validate_application_status(status)
     sow_qa = sow_question_answer or {"context": "", "questions": []}
+    _sow_text = sow_text or ""
     # _validate_sow_qa(sow_qa)
     # app_id = application_id
     now = _now_iso()
@@ -282,7 +292,7 @@ def create_application(
                 project_address,
                 zoning_type,
                 json.dumps(sow_qa),
-                "",
+                _sow_text,
                 "pending",
             ),
         )
@@ -671,18 +681,36 @@ def get_application_by_id(app_id: int) -> sqlite3.Row | None:
         ).fetchone()
 
 
-def get_all_applications() -> list[sqlite3.Row]:
+# def get_all_applications() -> list[sqlite3.Row]:
+#     with get_db() as conn:
+#         return conn.execute(
+#             """
+#             SELECT * FROM applications
+#             """
+#         ).fetchall()
+def get_all_applications():
     with get_db() as conn:
+        conn.row_factory = sqlite3.Row
         return conn.execute(
             """
-            SELECT a.id, a.permit_id, a.owner, a.address, a.created_at,
-                   s.workflow_status, s.stage, s.status_message, s.compliance_score
-              FROM legacy_applications a
-              JOIN application_status s ON a.id = s.app_id
-          ORDER BY a.id DESC
+            SELECT 
+                a.application_id,
+                a.date,
+                a.application_type,
+                a.owner_name,
+                a.zoning_type,
+                a.project_address,
+                a.sow_text,
+                a.status,
+                COALESCE(s.workflow_status, 'Submitted')      AS workflow_status,
+                COALESCE(s.stage, 'Submitted')                AS stage,
+                COALESCE(s.status_message, 'Application received.') AS status_message,
+                COALESCE(s.compliance_score, 100)             AS compliance_score
+            FROM applications a
+            LEFT JOIN application_status s ON s.app_id = a.application_id
+            ORDER BY a.date DESC
             """
         ).fetchall()
-
 
 def get_blueprint_bytes(app_id: int) -> tuple[bytes | None, str]:
     with get_db() as conn:
