@@ -2,6 +2,8 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ApplicationsApiService, StartApplicationRequest, SowRequest, SowResponse } from '../../../services/applications-api.service';
+import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 
 type ApplicantType = 'individual' | 'business' | 'ngo';
 
@@ -42,7 +44,7 @@ export interface AgentActivityEvent {
 @Component({
   selector: 'app-applications',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, MarkdownPipe],
   templateUrl: './applications.component.html',
   styleUrl: './applications.component.scss',
 })
@@ -52,6 +54,15 @@ export class ApplicationsComponent {
   steps = [1, 2, 3, 4, 5, 6];
   /** Unique application ID (UUID) created when user opens New Application – used across all steps */
   applicationId: string;
+  applicationStarted = false;
+  startApplicationLoading = false;
+  startApplicationError = '';
+  /** First request: send question_id as empty; after that use next_question_id from response (1, 2, 3, …). */
+  sowQuestionId = '';
+  /** First SOW request is sent with empty response to get the first question; after that we send user text. */
+  firstSowRequestSent = false;
+  sowLoading = false;
+  sowError = '';
   step1Form: FormGroup;
   step2Form: FormGroup;
   step3Form: FormGroup;
@@ -62,10 +73,13 @@ export class ApplicationsComponent {
   siteImageFiles: File[] = [];
   readonly describeWorkMaxLength = 2000;
 
-  aiCompanionMessages: { role: 'user' | 'bot'; text: string }[] = [
+  aiCompanionMessages: { role: 'user' | 'bot'; text: string; isSow?: boolean }[] = [
     { role: 'bot', text: "Hi! I'm your AI companion for this step. Ask me anything about scope of work or document upload." },
   ];
   aiCompanionInput = '';
+
+  /** Index of the SOW message that shows "Copied!" after copy (reset after 2s). */
+  copySowMessageIndex: number | null = null;
 
   /** Intake agent status – update from background API (polling or websocket) */
   intakeAgentStatus: IntakeAgentStatus = 'Completed';
@@ -133,15 +147,19 @@ export class ApplicationsComponent {
   submissionPermitId = 'BLR-006';
   estimatedReviewDays = 18;
 
-  constructor(private fb: FormBuilder, private router: Router) {
+  constructor(
+    private fb: FormBuilder,
+    private router: Router,
+    private applicationsApi: ApplicationsApiService,
+  ) {
     this.applicationId = this.generateUUID();
     this.step1Form = this.fb.nonNullable.group({
       applicantType: ['individual' as ApplicantType],
-      fullName: [''],
+      fullName: ['', [Validators.required, Validators.minLength(3)]],
       organization: [''],
       email: [''],
       phone: [''],
-      address: [''],
+      address: ['', [Validators.required, Validators.minLength(3)]],
     });
     this.step2Form = this.fb.nonNullable.group({
       zoningType: [''],
@@ -246,20 +264,46 @@ export class ApplicationsComponent {
     if (this.currentStep === 1) {
       this.step1Form.markAllAsTouched();
       if (this.step1Form.valid) {
-        this.currentStep = 2;
+        this.currentStep = 2; // applicationId already set on load; /applications/start is called at Step 2
       }
     } else if (this.currentStep === 2) {
       this.step2Form.markAllAsTouched();
-      if (this.step2Form.valid) {
+      if (!this.step2Form.valid) return;
+      if (this.applicationStarted) {
         this.currentStep = 3;
+        return;
       }
+      const step1 = this.step1Form.getRawValue();
+      const step2 = this.step2Form.getRawValue();
+      const startPayload: StartApplicationRequest = {
+        application_id: this.applicationId,
+        date: new Date().toISOString(),
+        application_type: 'NEW',
+        owner_name: (step1.fullName ?? '').toString(),
+        project_address: (step1.address ?? '').toString(),
+        zoning_type: (step2.zoningType ?? '').toString(),
+      };
+      this.startApplicationLoading = true;
+      this.startApplicationError = '';
+      this.applicationsApi.startApplication(startPayload).subscribe({
+        next: (res: unknown) => {
+          const body = res as { application_id?: string };
+          if (body?.application_id) this.applicationId = body.application_id;
+          this.applicationStarted = true;
+          this.startApplicationLoading = false;
+          this.startApplicationError = '';
+          this.currentStep = 3;
+        },
+        error: (err) => {
+          console.error('Start application failed:', err);
+          this.startApplicationLoading = false;
+          this.startApplicationError = 'Failed to start application. Please try again.';
+        },
+      });
     } else if (this.currentStep === 3) {
       this.step3Form.markAllAsTouched();
       if (this.step3Form.valid) {
-        // Collect all data (Step 1–3 + applicationId) for submit
-        const payload = this.getApplicationData();
-        console.log('New application submit payload (Step 1–3):', payload);
-        this.currentStep = 4; // Show "AI Agents at Work" timeline
+        this.currentStep = 4; // AI Agents at Work; applicationId set on load for SOW in Step 3
       }
     }
   }
@@ -392,6 +436,41 @@ export class ApplicationsComponent {
     });
   }
 
+  /** Beautify generated_sow for display: pretty-print JSON if valid, otherwise normalize whitespace. */
+  getBeautifiedSow(raw: string): string {
+    if (!raw?.trim()) return '';
+    const text = raw.trim();
+    try {
+      const parsed = JSON.parse(text);
+      return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+    } catch {
+      return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    }
+  }
+
+  copySowFromMessage(text: string, index: number): void {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(
+      () => {
+        this.copySowMessageIndex = index;
+        setTimeout(() => (this.copySowMessageIndex = null), 2000);
+      },
+      () => {},
+    );
+  }
+
+  /**
+   * When the API returns multiple numbered questions in one string (e.g. "1) ... 2) ... 3) ..."),
+   * return the N-th numbered block so we show question 1, then 2, then 3, and so on.
+   */
+  private getNthQuestion(nextQuestion: string, n: number): string {
+    if (!nextQuestion?.trim()) return nextQuestion || '';
+    const blocks = nextQuestion.match(/\d+\)\s*[^]*?(?=\s*\d+\)\s|$)/gs);
+    if (!blocks || blocks.length === 0) return nextQuestion.trim();
+    const index = Math.max(0, Math.min((n || 1) - 1, blocks.length - 1));
+    return blocks[index].trim();
+  }
+
   /** Application data (applicationId + steps data) for API or persistence. */
   getApplicationData(): {
     applicationId: string;
@@ -457,13 +536,56 @@ export class ApplicationsComponent {
 
   sendAiMessage(): void {
     const text = this.aiCompanionInput?.trim();
-    if (!text) return;
+    if (!text || this.sowLoading) return;
+
     this.aiCompanionMessages.push({ role: 'user', text });
     this.aiCompanionInput = '';
-    // Placeholder bot reply – replace with API call later
-    this.aiCompanionMessages.push({
-      role: 'bot',
-      text: "Thanks for your message. I'm here to help with scope of work and document upload. (This is a placeholder reply.)",
+    this.sowLoading = true;
+    this.sowError = '';
+
+    // Every SOW request: { application_id, question_id, response }. First time: question_id empty, response empty;
+    // after that question_id = next_question_id from previous response (1, 2, 3, …), response = user text.
+    const payload: SowRequest = {
+      application_id: this.applicationId,
+      question_id: this.sowQuestionId,
+      response: this.firstSowRequestSent ? text : '',
+    };
+    if (!this.firstSowRequestSent) this.firstSowRequestSent = true;
+
+    this.applicationsApi.sendSowMessage(payload).subscribe({
+      next: (res: SowResponse) => {
+        this.sowLoading = false;
+        const sentQuestionNum = this.sowQuestionId === '' ? 1 : parseInt(this.sowQuestionId, 10) || 1;
+        // Use sequential question_id for next payload: "" → "2", "2" → "3", "3" → "4", etc. (ignore API next_question_id)
+        const nextNum = sentQuestionNum + 1;
+        this.sowQuestionId = String(nextNum);
+
+        if (res.next_question) {
+          const textToShow = this.getNthQuestion(res.next_question, sentQuestionNum);
+          this.aiCompanionMessages.push({
+            role: 'bot',
+            text: textToShow,
+          });
+        }
+
+        if (res.generated_sow) {
+          const beautified = this.getBeautifiedSow(res.generated_sow);
+          this.aiCompanionMessages.push({
+            role: 'bot',
+            text: beautified,
+            isSow: true,
+          });
+        }
+      },
+      error: (err) => {
+        console.error('SOW AI companion error:', err);
+        this.sowLoading = false;
+        this.sowError = 'AI companion is unavailable. Please try again.';
+        this.aiCompanionMessages.push({
+          role: 'bot',
+          text: 'Sorry, I could not process that right now. Please try again.',
+        });
+      },
     });
   }
 }

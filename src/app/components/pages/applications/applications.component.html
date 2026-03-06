@@ -22,6 +22,10 @@
     </div>
   </div>
 
+  @if (currentStep >= 1 && currentStep <= 3) {
+    <!-- <p class="application-id-label">Application ID: <code class="application-id-value">{{ applicationId }}</code></p> -->
+  }
+
   <!-- Step 1: Applicant Information -->
   @if (currentStep === 1) {
     <form [formGroup]="step1Form" (ngSubmit)="saveAndContinue()" class="applicant-form">
@@ -53,7 +57,7 @@
           placeholder="Enter full name"
         />
         @if (fullName?.invalid && fullName?.touched) {
-          <span class="error-text">Full name is required</span>
+          <span class="error-text">{{ fullName?.hasError('required') ? 'Full name is required.' : 'Full name must be at least 3 letters.' }}</span>
         }
       </div>
 
@@ -106,7 +110,7 @@
           placeholder="Enter address"
         ></textarea>
         @if (address?.invalid && address?.touched) {
-          <span class="error-text">Address is required</span>
+          <span class="error-text">{{ address?.hasError('required') ? 'Address is required.' : 'Address must be at least 3 letters.' }}</span>
         }
       </div>
 
@@ -132,8 +136,6 @@
       </div>
     </form>
   }
-
-  <!-- Step 2: Property Details -->
   @if (currentStep === 2) {
     <form [formGroup]="step2Form" (ngSubmit)="saveAndContinue()" class="applicant-form property-form">
       <div class="form-row">
@@ -211,7 +213,12 @@
       </div>
 
       <div class="form-actions">
-        <button type="submit" class="btn-primary">Save &amp; Continue</button>
+        @if (startApplicationError) {
+          <span class="error-text">{{ startApplicationError }}</span>
+        }
+        <button type="submit" class="btn-primary" [disabled]="startApplicationLoading">
+          @if (startApplicationLoading) { Starting… } @else { Save &amp; Continue }
+        </button>
       </div>
     </form>
   }
@@ -300,10 +307,20 @@
       <aside class="ai-companion-panel">
         <h3 class="ai-companion-title">AI Companion</h3>
         <p class="ai-companion-desc">Chat with the assistant for help on scope of work and documents.</p>
+        @if (sowError) {
+          <p class="error-text">{{ sowError }}</p>
+        }
         <div class="ai-companion-messages">
           @for (msg of aiCompanionMessages; track $index) {
-            <div class="ai-message" [class.ai-message-bot]="msg.role === 'bot'" [class.ai-message-user]="msg.role === 'user'">
-              <span class="ai-message-text">{{ msg.text }}</span>
+            <div class="ai-message" [class.ai-message-bot]="msg.role === 'bot'" [class.ai-message-user]="msg.role === 'user'" [class.ai-message-sow]="msg.isSow">
+              @if (msg.isSow) {
+                <div class="ai-message-sow-content" [innerHTML]="msg.text | markdown"></div>
+                <button type="button" class="btn-copy-sow-inline" (click)="copySowFromMessage(msg.text, $index)">
+                  {{ copySowMessageIndex === $index ? 'Copied!' : 'Copy' }}
+                </button>
+              } @else {
+                <span class="ai-message-text">{{ msg.text }}</span>
+              }
             </div>
           }
         </div>
@@ -316,7 +333,9 @@
             (ngModelChange)="aiCompanionInput = $event"
             (keydown.enter)="sendAiMessage(); $event.preventDefault()"
           />
-          <button type="button" class="ai-companion-send" (click)="sendAiMessage()">Send</button>
+          <button type="button" class="ai-companion-send" [disabled]="sowLoading" (click)="sendAiMessage()">
+            @if (sowLoading) { ... } @else { Send }
+          </button>
         </div>
       </aside>
     </div>
