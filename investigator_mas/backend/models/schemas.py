@@ -570,9 +570,17 @@ class ReviewProgressEvent(BaseModel):
 
 
 class ReviewResult(BaseModel):
-    app_id: int
+    app_id: str          # ← was int, now str to support UUID application_ids
     permit_id: str
     findings: list[AgentFinding]
     compliance_score: int
     workflow_status: WorkflowStatus
     stage: str
+
+# class ReviewResult(BaseModel):
+#     app_id: int
+#     permit_id: str
+#     findings: list[AgentFinding]
+#     compliance_score: int
+#     workflow_status: WorkflowStatus
+#     stage: str

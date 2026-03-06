@@ -50,5 +50,6 @@ from common.database import (  # noqa: F401  (re-exports)
     set_ai_status,
     set_ai_compliance_summary,
     delete_ai_record,
-    update_application_sow_state
+    update_application_sow_state,
+    get_all_applications
 )

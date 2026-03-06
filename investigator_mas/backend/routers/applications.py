@@ -11,7 +11,7 @@ GET  /applications/{app_id}/blueprint/analyse  →  trigger Gemma 3 visual analy
 from fastapi import APIRouter, HTTPException
 
 from backend.models.schemas import ApplicationPayload,ApplicationListItem
-from backend.models.database import get_application_by_id, create_application
+from backend.models.database import get_application_by_id, create_application,get_all_applications
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 

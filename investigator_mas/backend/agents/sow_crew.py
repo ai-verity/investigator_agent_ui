@@ -258,7 +258,7 @@ class SOWCrew:
         print("Type 'done' at any time to proceed with available information.\n")
 
         # ── Collect mandatory form fields upfront ──────────────────
-        if user_response:
+        if user_response and isinstance(user_response, str) and user_response.strip():
             session.conversation_history.append(ConversationTurn(role="user", content=user_response))
 
 
@@ -329,7 +329,8 @@ class SOWCrew:
 
             print(f"\nQuestion {session.questions_asked}/5:")
             print(f"  {question}\n")
-            session.conversation_history.append(ConversationTurn(role="assistant", content=question))   
+            if question:
+                session.conversation_history.append(ConversationTurn(role="assistant", content=question))   
             session.generated_sow = ""
         else:
             session.generated_sow = self.run_batch(session)

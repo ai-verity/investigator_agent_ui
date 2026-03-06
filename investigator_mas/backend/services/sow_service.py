@@ -15,22 +15,46 @@ from backend.models.schemas import PermitSession, SOWInput, SOWResponsePayload
 
 from backend.models.database import get_application_by_id, update_application_sow_state
 import json
-
 def generate_sow(input: SOWInput):
     city = "austin" if "austin" in (input.project_address or "").lower() else "unknown"
     sc = SOWCrew(city)
-    ps = None 
+    ps = None
 
     # Load existing session from DB (sow_question_answer stores serialized PermitSession)
     raw_state = input.sow_question_answer or {}
     if raw_state.get("__permit_session__"):
         session_data = raw_state["__permit_session__"]
-        # Sanitize None → "" for all str fields that don't allow None
-        for str_field in ("generated_sow", "guidelines", "short_scope", 
-                        "occupancy_type", "special_conditions", "city",
-                        "project_address", "owner_name", "application_type", "zoning_type"):
+
+        # Str fields: None → ""
+        for str_field in ("generated_sow", "guidelines", "short_scope",
+                          "occupancy_type", "special_conditions", "city",
+                          "project_address", "owner_name", "application_type", "zoning_type"):
             if session_data.get(str_field) is None:
                 session_data[str_field] = ""
+
+        # Float fields: non-numeric strings → None
+        for float_field in ("project_size_sqft", "existing_structure_sqft", "lot_sqft",
+                            "front_setback_ft", "rear_setback_ft", "side_setback_ft",
+                            "proposed_height_ft", "num_stories"):
+            val = session_data.get(float_field)
+            if isinstance(val, str):
+                try:
+                    session_data[float_field] = float(val)
+                except (ValueError, TypeError):
+                    session_data[float_field] = None
+
+        # Bool fields: non-bool strings → None
+        for bool_field in ("structural_changes", "mep_changes",
+                           "heritage_trees_nearby", "pre_1980_structure"):
+            val = session_data.get(bool_field)
+            if isinstance(val, str):
+                if val.lower() in ("true", "yes", "1"):
+                    session_data[bool_field] = True
+                elif val.lower() in ("false", "no", "0"):
+                    session_data[bool_field] = False
+                else:
+                    session_data[bool_field] = None  # "Pending user input" → None
+
         ps = PermitSession(**session_data)
     else:
         ps = PermitSession(
@@ -43,8 +67,8 @@ def generate_sow(input: SOWInput):
         )
 
     question_id, question, is_done, generated_sow = sc.run_interactive(
-    input.curr_response, ps, application_id=input.application_id
-)
+        input.curr_response, ps, application_id=input.application_id
+    )
 
     # Persist updated session back to DB
     new_state = {"__permit_session__": ps.model_dump()}
@@ -54,7 +78,7 @@ def generate_sow(input: SOWInput):
         sow_text=generated_sow or "",
         status="complete" if is_done else "pending",
     )
-    print("DB status",status)
+    print("DB status", status)
 
     return SOWResponsePayload(
         application_id=input.application_id,
@@ -63,6 +87,53 @@ def generate_sow(input: SOWInput):
         is_done=is_done,
         generated_sow=generated_sow,
     )
+# def generate_sow(input: SOWInput):
+#     city = "austin" if "austin" in (input.project_address or "").lower() else "unknown"
+#     sc = SOWCrew(city)
+#     ps = None 
+
+#     # Load existing session from DB (sow_question_answer stores serialized PermitSession)
+#     raw_state = input.sow_question_answer or {}
+#     if raw_state.get("__permit_session__"):
+#         session_data = raw_state["__permit_session__"]
+#         # Sanitize None → "" for all str fields that don't allow None
+#         for str_field in ("generated_sow", "guidelines", "short_scope", 
+#                         "occupancy_type", "special_conditions", "city",
+#                         "project_address", "owner_name", "application_type", "zoning_type"):
+#             if session_data.get(str_field) is None:
+#                 session_data[str_field] = ""
+#         ps = PermitSession(**session_data)
+#     else:
+#         ps = PermitSession(
+#             city=city,
+#             project_address=input.project_address or "",
+#             owner_name=input.owner_name or "",
+#             application_type=input.application_type,
+#             zoning_type=input.zoning_type or "",
+#             short_scope=input.sow_text or "",
+#         )
+
+#     question_id, question, is_done, generated_sow = sc.run_interactive(
+#     input.curr_response, ps, application_id=input.application_id
+# )
+
+#     # Persist updated session back to DB
+#     new_state = {"__permit_session__": ps.model_dump()}
+#     status = update_application_sow_state(
+#         application_id=input.application_id,
+#         sow_question_answer=json.dumps(new_state),
+#         sow_text=generated_sow or "",
+#         status="complete" if is_done else "pending",
+#     )
+#     print("DB status",status)
+
+#     return SOWResponsePayload(
+#         application_id=input.application_id,
+#         next_question_id=str(question_id),
+#         next_question=question,
+#         is_done=is_done,
+#         generated_sow=generated_sow,
+#     )
 # ps = None
 
 

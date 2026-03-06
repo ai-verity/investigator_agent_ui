@@ -9,10 +9,18 @@ The SSE generator drains that queue and yields events to the HTTP response.
 """
 
 import json
+import os       
 import queue
 import re
 import threading
 from typing import Generator
+import time                          # ← ADD
+import base64                        # ← ADD
+from typing import Generator
+
+import requests                      # ← ADD
+from requests.adapters import HTTPAdapter   # ← ADD
+from urllib3.util.retry import Retry        # ← ADD
 
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.tasks.task_output import TaskOutput
@@ -28,6 +36,8 @@ from backend.models.database import (
 from backend.services.blueprint_service import (
     analyse_blueprint,
     blueprint_findings_to_agent_findings,
+    _SYSTEM_PROMPT as system_message,    # ← ADD
+    _USER_PROMPT as user_message,        # ← ADD
 )
 from backend.tools.nim_llm import create_nim_llm
 from backend.austin import *
@@ -40,7 +50,211 @@ from backend.austin import *
 def _llm():
     return create_nim_llm()
 
+def encode_image(image_path):
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
 
+def run_inference(image_path, api_type="local"):
+    # Read settings from environment 
+    model_name = os.getenv("MODEL_NAME", "qwen3.5-35b")
+
+    if api_type == "local":
+        base_url = os.getenv("LOCAL_NIM_URL", "http://localhost:8000/v1")
+        headers = {"Content-Type": "application/json"}
+        api_key = None
+    else:  # cloud
+        base_url = os.getenv("CLOUD_NIM_URL", "https://integrate.api.nvidia.com/v1")
+        api_key = os.getenv("NVIDIA_API_KEY")
+        if not api_key:
+            raise ValueError("NVIDIA_API_KEY environment variable not set for cloud inference")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+
+    # Encode image 
+    encode_start = time.time()
+    base64_image = encode_image(image_path)
+    encode_time = time.time() - encode_start
+    PHOTO_SYSTEM_PROMPT = """
+    You are a licensed Austin DSD Field Inspector performing a site photo review
+    for a residential permit application.
+
+    You have 20 years of experience identifying unpermitted structures, code violations,
+    site hazards, and documentation gaps from site photographs.
+
+    Output ONLY valid JSON. No explanations. No markdown. No extra text.
+
+    Rules:
+    - Only report what is clearly visible in the photo.
+    - Do NOT assume or infer what is not visible.
+    - If something is partially visible, note it as "partially visible".
+    - Be specific about locations (front yard, backyard, left side, roof, etc.).
+    """
+
+    PHOTO_USER_PROMPT = """
+    Analyze this site photograph of a residential property for permit compliance review.
+
+    Observe and document everything visible including:
+
+    STRUCTURES:
+    - Main residence (condition, stories, additions visible)
+    - Detached garages or carports
+    - Storage sheds (size estimate, foundation type if visible)
+    - Accessory dwelling units (ADUs) or guest houses
+    - Pergolas, gazebos, covered patios
+    - Fences and gates (height estimate, material)
+    - Retaining walls
+    - Pools or spas
+    - Any structure that may have been added without a permit
+
+    SITE CONDITIONS:
+    - Lot boundaries and setbacks (any visible encroachments)
+    - Driveways and impervious surfaces (concrete, pavers, asphalt)
+    - Drainage patterns or ponding areas
+    - Erosion or grading concerns
+
+    TREES:
+    - Large trees (estimate diameter — trees >19in require heritage tree permit in Austin)
+    - Trees near proposed construction zone
+    - Recently removed stumps
+
+    SAFETY CONCERNS:
+    - Exposed electrical (visible wiring, panels, meters)
+    - Structural concerns (visible cracking, leaning, deterioration)
+    - Hazardous materials indicators (old roofing, pipe insulation visible)
+    - Work-in-progress without visible permits posted
+
+    GENERAL:
+    - Overall property condition (well-maintained / deteriorated)
+    - Any visible permit notices or stop-work orders posted
+    - Evidence of recent construction activity
+
+    Return EXACTLY this JSON:
+
+    {
+    "photo_summary": "<2-3 sentence overall description of what is visible>",
+    "structures_observed": [
+        {
+        "type": "<structure type e.g. main residence | shed | detached garage | ADU | pergola | fence | pool | other>",
+        "description": "<what you see>",
+        "location": "<where on property e.g. backyard | left side | front yard>",
+        "estimated_size": "<size if estimable, else null>",
+        "permit_concern": "<any permit concern or null>",
+        "visibility": "clear | partial | unclear"
+        }
+    ],
+    "trees_observed": [
+        {
+        "location": "<where on property>",
+        "estimated_diameter_inches": "<number or null if unclear>",
+        "heritage_tree_risk": true,
+        "notes": "<any notes>"
+        }
+    ],
+    "site_conditions": {
+        "impervious_surfaces_observed": "<description or null>",
+        "drainage_concerns": "<description or null>",
+        "setback_concerns": "<description or null>",
+        "overall_condition": "well-maintained | fair | deteriorated | unclear"
+    },
+    "safety_concerns": [
+        {
+        "concern": "<description>",
+        "severity": "low | medium | high"
+        }
+    ],
+    "unpermitted_work_indicators": [
+        "<description of anything that appears unpermitted>"
+    ],
+    "extraction_confidence": "high | medium | low",
+    "notes": "<any other observations not captured above>"
+    }
+
+    Return ONLY the JSON.
+    """
+    # Build payload 
+    payload = {
+    "model": model_name,
+    "messages": [
+        {
+            "role": "system",
+            "content": PHOTO_SYSTEM_PROMPT
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": PHOTO_USER_PROMPT
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_image}"
+                    }
+                }
+            ]
+        }
+    ],
+    "max_tokens": 1200,
+    "temperature": 0.2,
+    "response_format":{"type": "json_object"}
+            }
+
+    url = f"{base_url.rstrip('/')}/chat/completions"
+
+    # Use a session with connection pooling and retries
+    session = requests.Session()
+    retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[502, 503, 504])
+    adapter = HTTPAdapter(max_retries=retries, pool_connections=10, pool_maxsize=10)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    inference_start = time.time()
+    try:
+        response = session.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        return
+    inference_time = time.time() - inference_start
+
+    result = response.json()
+    try:
+        #content = result["choices"][0]["message"]["content"]
+        print("\nFULL RAW RESPONSE:\n")
+        print(json.dumps(result, indent=2))
+
+        content = result["choices"][0]["message"].get("content")
+        usage = result.get("usage", {})
+        output_tokens = usage.get("completion_tokens", 0)
+        tps = output_tokens / inference_time if inference_time > 0 else 0
+
+        print("\n" + "="*60)
+        print(f"Inference using {api_type.upper()} endpoint")
+        print("="*60)
+        print(f"Image encode time:      {encode_time:.3f} s")
+        print(f"Inference time (HTTP):  {inference_time:.3f} s")
+        print(f"Total time:             {encode_time + inference_time:.3f} s")
+        print(f"Output tokens:          {output_tokens}")
+        print(f"Throughput:             {tps:.2f} tokens/s")
+        print("="*60)
+        print("RESPONSE PREVIEW:")
+        print(content[:500] + ("..." if len(content) > 500 else ""))
+        print("="*60)
+        return content
+        # Save full output
+        # if api_type == "local":
+        #     with open("vlm_output_local.json", "w") as f:
+        #         json.dump(content, f, indent=4)
+        # elif api_type == "cloud":
+        #     with open("vlm_output_cloud.json", "w") as f:
+        #         json.dump(content, f, indent=4)
+
+    except (KeyError, IndexError) as e:
+        print("Unexpected response format:", e)
+        print(result)
 # ── Dummy tool input schema ────────────────────────────────────────────────────
 
 class PermitHistoryAgentInput(BaseModel):
@@ -219,15 +433,17 @@ def _load_app_data(app_id: int) -> dict:
     row = get_application_by_id(app_id)
     if not row:
         raise RuntimeError(f"Application {app_id} not found in database.")
+     # Convert sqlite3.Row to dict so .get() works safely
+    row = dict(row)
     return {
-        "address":            row["project_address"]          or "Unknown address",
-        "scope_of_work":      row["sow_text"]                 or "No scope of work provided.",
-        "owner":              row["owner_name"]               or "",
-        "application_type":   row["application_type"]         or "",
-        "zoning_type":        row["zoning_type"]              or "SF-3",
-        "square_footage":     row.get("project_size_sqft")    or "unknown sqft",
-        "zoning_and_overlay": row["zoning_type"]              or "SF-3",
-        "impervious_cover":   row.get("impervious_cover")     or "unknown",
+        "address":            row.get("project_address")       or "Unknown address",
+        "scope_of_work":      row.get("sow_text")              or "No scope of work provided.",
+        "owner":              row.get("owner_name")            or "",
+        "application_type":   row.get("application_type")      or "",
+        "zoning_type":        row.get("zoning_type")           or "SF-3",
+        "square_footage":     row.get("project_size_sqft")     or "unknown sqft",
+        "zoning_and_overlay": row.get("zoning_type")           or "SF-3",
+        "impervious_cover":   row.get("impervious_cover")      or "unknown",
     }
 
 
@@ -320,6 +536,8 @@ def _build_crew_and_tasks(
         llm=llm, verbose=True, allow_delegation=False,
     )
 
+
+
     # ── Intake Task 1: Blueprint Analysis ─────────────────────────────────────
     task_blueprint = Task(
         description=(
@@ -342,24 +560,37 @@ def _build_crew_and_tasks(
     )
 
     # ── Intake Task 2: Photo Review ────────────────────────────────────────────
-    photo_summary = (
-            f"{len(photo_paths)} photo(s) submitted:\n" +
-            "\n".join(f"  - {os.path.basename(p)}" for p in photo_paths)
-            if photo_paths
-            else "No photos have been uploaded for this application."
+    if photo_paths:
+        photo_results = []
+        for photo in photo_paths:
+            result = run_inference(photo, api_type="local")
+            if result:
+                photo_results.append(
+                    f"--- {os.path.basename(photo)} ---\n{result}"
+                )
+        photo_summary = (
+            f"{len(photo_paths)} photo(s) submitted and analyzed:\n\n" +
+            "\n\n".join(photo_results)
+            if photo_results
+            else f"{len(photo_paths)} photo(s) submitted but analysis returned no results."
         )
+    else:
+        photo_summary = "No photos have been uploaded for this application."
+        # photo_summary = (
+    #         f"{len(photo_paths)} photo(s) submitted:\n" +
+    #         "\n".join(f"  - {os.path.basename(p)}" for p in photo_paths)
+    #         if photo_paths
+    #         else "No photos have been uploaded for this application."
+    #     )
 
     task_photos = Task(
         description=(
             f"You are reviewing the submitted site photos for permit application at {address}.\n\n"
-            f"Scope of Work: {sow}\n\n"
-            f"Submitted photos:\n{photo_summary}\n\n"
-            "Assess:\n"
-            "  - Are a minimum of 3 site photos submitted? (currently: {len(photo_paths)})\n"
-            "  - Do the filenames/count suggest: existing structure, site boundaries, "
-            "    drainage, any trees >19in diameter (heritage tree permit required)?\n"
-            "  - Flag any expected photo evidence that appears to be missing.\n"
-            "  - If 0 photos uploaded, flag as a blocker — photos are mandatory.\n\n"
+            "The following AI vision analysis was performed on each submitted photo:\n\n"
+            f"{photo_summary}\n\n"
+            "Based on these photo analyses, produce a consolidated compliance findings report.\n"
+            "Flag: unpermitted structures, setback concerns, heritage trees, safety hazards, "
+            "impervious cover issues, and any evidence of work started before permit.\n\n"
             + _FINDING_JSON_SCHEMA
         ),
         expected_output="JSON object with summary and findings array.",
@@ -470,7 +701,7 @@ def _build_crew_and_tasks(
 _SENTINEL = object()
 
 
-def _run_crew_in_thread(app_id: int, event_queue: queue.Queue) -> None:
+def _run_crew_in_thread(app_id: str, event_queue: queue.Queue) -> None:
     all_findings: list[AgentFinding] = []
     task_keys = ["blueprint", "photos", "zoning_lookup", "permit_history", "intake", "code", "planner", "inspector"]
 
@@ -558,7 +789,7 @@ def _run_crew_in_thread(app_id: int, event_queue: queue.Queue) -> None:
         event_queue.put(_SENTINEL)
 
 
-def stream_review(app_id: int) -> Generator[ReviewProgressEvent, None, None]:
+def stream_review(app_id: str) -> Generator[ReviewProgressEvent, None, None]:
     """Launch crew in background thread; yield events as they arrive."""
     q = queue.Queue()
     threading.Thread(target=_run_crew_in_thread, args=(app_id, q), daemon=True).start()

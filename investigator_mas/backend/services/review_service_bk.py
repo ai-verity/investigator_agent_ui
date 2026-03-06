@@ -200,6 +200,13 @@ def _run_crew_in_thread(app_id: int, app_data: dict, event_queue: queue.Queue) -
     all_findings: list[AgentFinding] = []
     task_keys = ["intake", "code", "planner", "inspector"]
     completed = [0]
+    upsert_application_status(
+            app_id=app_id,
+            workflow_status="Pending",
+            stage="Review In Progress",
+            status_message="Automated review started — agents running.",
+            compliance_score=0,
+        )
 
     try:
         llm  = _llm()
@@ -285,6 +292,14 @@ def _run_crew_in_thread(app_id: int, app_data: dict, event_queue: queue.Queue) -
             status_message=f"Review complete: {len(all_findings)} findings.",
             compliance_score=score,
         )
+        
+        upsert_application_status(
+            app_id=app_id,
+            workflow_status="Pending",
+            stage=stage_label,
+            status_message=f"Review complete: {len(all_findings)} findings.",
+            compliance_score=score,
+        )
 
         event_queue.put(ReviewProgressEvent(
             event_type="complete", agent_name="System", agent_index=-1,
@@ -293,6 +308,13 @@ def _run_crew_in_thread(app_id: int, app_data: dict, event_queue: queue.Queue) -
         ))
 
     except Exception as exc:
+        upsert_application_status(
+            app_id=app_id,
+            workflow_status="Pending",
+            stage="Review Failed",
+            status_message=f"Review error: {str(exc)[:200]}",
+            compliance_score=0,
+        )
         event_queue.put(ReviewProgressEvent(
             event_type="error", agent_name="System", agent_index=-1,
             message=f"Crew error: {exc}",

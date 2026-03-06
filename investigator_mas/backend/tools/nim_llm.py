@@ -28,6 +28,8 @@ def _qwen_safe_completion(*args, **kwargs):
         if sys_msgs:
             merged_content = "\n\n".join(m["content"] for m in sys_msgs)
             kwargs["messages"] = [{"role": "system", "content": merged_content}] + other_msgs
+
+    kwargs["chat_template_kwargs"] = {"enable_thinking": False}
     return _original_completion(*args, **kwargs)
 
 litellm.completion = _qwen_safe_completion   # ← patch applied at import time
@@ -50,7 +52,7 @@ def _local_endpoint() -> tuple[str, str]:
 def create_nim_llm(
     api_type: Optional[str]   = None,
     model_name: Optional[str] = None,
-    temperature: float        = 0.2,
+    temperature: float        = 0.7,
     max_tokens: int           = 5000,
 ) -> LLM:
     resolved_api_type = api_type    or os.getenv("NIM_API_TYPE", "local")
