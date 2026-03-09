@@ -1,4 +1,4 @@
-import { Component, OnDestroy } from '@angular/core';
+import { Component, OnDestroy, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -49,7 +49,7 @@ export interface AgentActivityEvent {
   templateUrl: './applications.component.html',
   styleUrl: './applications.component.scss',
 })
-export class ApplicationsComponent implements OnDestroy {
+export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
   currentStep = 1;
   totalSteps = 6;
   steps = [1, 2, 3, 4, 5, 6];
@@ -77,7 +77,6 @@ export class ApplicationsComponent implements OnDestroy {
   photosUploadLoading = false;
   photosUploadError = '';
   step3UploadLoading = false;
-  readonly describeWorkMaxLength = 5000;
 
   /** Review stream (Step 4) subscription; unsubscribed on destroy. */
   reviewStreamSubscription: Subscription | null = null;
@@ -85,6 +84,9 @@ export class ApplicationsComponent implements OnDestroy {
 
   /** When false, show Scope of Work Agent intro popup; when true, show chatbot. */
   scopeAgentChatOpen = false;
+
+  @ViewChild('chatMessagesContainer') chatMessagesContainer: ElementRef<HTMLDivElement> | null = null;
+  private lastCompanionMessagesLength = 0;
 
   aiCompanionMessages: { role: 'user' | 'bot'; text: string; isSow?: boolean }[] = [];
   aiCompanionInput = '';
@@ -770,6 +772,20 @@ export class ApplicationsComponent implements OnDestroy {
   ngOnDestroy(): void {
     this.reviewStreamSubscription?.unsubscribe();
     this.reviewStreamSubscription = null;
+  }
+
+  ngAfterViewChecked(): void {
+    if (this.chatMessagesContainer?.nativeElement && this.aiCompanionMessages.length !== this.lastCompanionMessagesLength) {
+      this.lastCompanionMessagesLength = this.aiCompanionMessages.length;
+      this.scrollChatToBottom();
+    }
+  }
+
+  private scrollChatToBottom(): void {
+    const el = this.chatMessagesContainer?.nativeElement;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
   }
 
   /** True while the review stream is active (Step 4); used to show "Receiving agent updates…" until all agents complete. */
