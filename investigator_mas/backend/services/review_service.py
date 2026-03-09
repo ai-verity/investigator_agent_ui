@@ -36,11 +36,11 @@ from backend.models.database import (
 from backend.services.blueprint_service import (
     analyse_blueprint,
     blueprint_findings_to_agent_findings,
-    _SYSTEM_PROMPT as system_message,    # ← ADD
-    _USER_PROMPT as user_message,        # ← ADD
+    _SYSTEM_PROMPT as system_message,
+    _USER_PROMPT as user_message,
 )
 from backend.tools.nim_llm import create_nim_llm
-from backend.austin import *
+from common import get_city, get_city_or_none, CITY_ALIASES, list_cities
 
 
 # ─────────────────────────────────────────────
@@ -50,19 +50,31 @@ from backend.austin import *
 def _llm():
     return create_nim_llm()
 
+
+def _detect_city_from_address(address: str) -> str:
+    """Extract city slug from a project_address string. Falls back to 'austin'."""
+    addr_lower = address.lower()
+    for alias, slug in sorted(CITY_ALIASES.items(), key=lambda x: -len(x[0])):
+        if alias in addr_lower:
+            return slug
+    for slug in list_cities():
+        if slug.replace("_", " ") in addr_lower:
+            return slug
+    return "austin"
+
 def encode_image(image_path):
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
-def run_inference(image_path, api_type="local"):
-    # Read settings from environment 
+def run_inference(image_path, api_type="local", city_slug="austin"):
+    cfg = get_city(city_slug)
     model_name = os.getenv("MODEL_NAME", "qwen3.5-35b")
 
     if api_type == "local":
         base_url = os.getenv("LOCAL_NIM_URL", "http://localhost:8000/v1")
         headers = {"Content-Type": "application/json"}
         api_key = None
-    else:  # cloud
+    else:
         base_url = os.getenv("CLOUD_NIM_URL", "https://integrate.api.nvidia.com/v1")
         api_key = os.getenv("NVIDIA_API_KEY")
         if not api_key:
@@ -72,13 +84,19 @@ def run_inference(image_path, api_type="local"):
             "Authorization": f"Bearer {api_key}"
         }
 
-    # Encode image 
     encode_start = time.time()
     base64_image = encode_image(image_path)
     encode_time = time.time() - encode_start
-    PHOTO_SYSTEM_PROMPT = """
-    You are a licensed Austin DSD Field Inspector performing a site photo review
-    for a residential permit application.
+
+    tree_note = ""
+    for note in (cfg.general_notes or []):
+        if "tree" in note.lower():
+            tree_note = note
+            break
+
+    PHOTO_SYSTEM_PROMPT = f"""
+    You are a licensed field inspector performing a site photo review
+    for a residential permit application in {cfg.city_name}, {cfg.state}.
 
     You have 20 years of experience identifying unpermitted structures, code violations,
     site hazards, and documentation gaps from site photographs.
@@ -92,8 +110,9 @@ def run_inference(image_path, api_type="local"):
     - Be specific about locations (front yard, backyard, left side, roof, etc.).
     """
 
-    PHOTO_USER_PROMPT = """
-    Analyze this site photograph of a residential property for permit compliance review.
+    PHOTO_USER_PROMPT = f"""
+    Analyze this site photograph of a residential property for permit compliance review
+    in {cfg.city_name}, {cfg.state}.
 
     Observe and document everything visible including:
 
@@ -115,7 +134,7 @@ def run_inference(image_path, api_type="local"):
     - Erosion or grading concerns
 
     TREES:
-    - Large trees (estimate diameter — trees >19in require heritage tree permit in Austin)
+    - Large trees (estimate diameter). {tree_note}
     - Trees near proposed construction zone
     - Recently removed stumps
 
@@ -132,44 +151,44 @@ def run_inference(image_path, api_type="local"):
 
     Return EXACTLY this JSON:
 
-    {
+    {{
     "photo_summary": "<2-3 sentence overall description of what is visible>",
     "structures_observed": [
-        {
-        "type": "<structure type e.g. main residence | shed | detached garage | ADU | pergola | fence | pool | other>",
+        {{
+        "type": "<structure type>",
         "description": "<what you see>",
-        "location": "<where on property e.g. backyard | left side | front yard>",
+        "location": "<where on property>",
         "estimated_size": "<size if estimable, else null>",
         "permit_concern": "<any permit concern or null>",
         "visibility": "clear | partial | unclear"
-        }
+        }}
     ],
     "trees_observed": [
-        {
+        {{
         "location": "<where on property>",
         "estimated_diameter_inches": "<number or null if unclear>",
         "heritage_tree_risk": true,
         "notes": "<any notes>"
-        }
+        }}
     ],
-    "site_conditions": {
+    "site_conditions": {{
         "impervious_surfaces_observed": "<description or null>",
         "drainage_concerns": "<description or null>",
         "setback_concerns": "<description or null>",
         "overall_condition": "well-maintained | fair | deteriorated | unclear"
-    },
+    }},
     "safety_concerns": [
-        {
+        {{
         "concern": "<description>",
         "severity": "low | medium | high"
-        }
+        }}
     ],
     "unpermitted_work_indicators": [
         "<description of anything that appears unpermitted>"
     ],
     "extraction_confidence": "high | medium | low",
     "notes": "<any other observations not captured above>"
-    }
+    }}
 
     Return ONLY the JSON.
     """
@@ -197,9 +216,8 @@ def run_inference(image_path, api_type="local"):
             ]
         }
     ],
-    "max_tokens": 1200,
-    "temperature": 0.2,
-    "response_format":{"type": "json_object"}
+    "max_tokens": 4096,
+    "temperature": 0.7,
             }
 
     url = f"{base_url.rstrip('/')}/chat/completions"
@@ -276,7 +294,7 @@ def get_zoning_info(street_address: str) -> str:
     """
     return json.dumps({
         "street_address": street_address,
-        "zoning_district": "SF-3",
+        "zoning_district": "Residential",
         "overlay": "Residential",
         "max_impervious_cover_pct": 45,
         "max_height_ft": 35,
@@ -284,7 +302,7 @@ def get_zoning_info(street_address: str) -> str:
         "min_rear_setback_ft": 10,
         "min_side_setback_ft": 5,
         "far": 0.4,
-        "source": "Austin Land Development Code §25-2 (dummy data)",
+        "source": "Zoning lookup (dummy data)",
     })
 
 
@@ -338,7 +356,7 @@ def get_permit_history(street_address: str) -> str:
                 "valuation_usd": 45000,
             },
         ],
-        "source": "City of Austin Development Services Department (dummy data)",
+        "source": "Permit history lookup (dummy data)",
     })
 
 
@@ -351,7 +369,7 @@ AGENT_META = [
     {"key": "permit_history", "name": "Intake: Permit History",     "icon": "📜",  "desc": "Intake agent retrieving past permit records for this address."},
     {"key": "intake",         "name": "Intake: Document Check",     "icon": "📋",  "desc": "Intake agent verifying document completeness against DSD IHB150 requirements."},
     {"key": "code",           "name": "Code Enforcement",           "icon": "📐",  "desc": "Cross-referencing blueprint measurements against IRC 2021."},
-    {"key": "planner",        "name": "Zoning & Site Planner",      "icon": "🗺️",  "desc": "Auditing site data against Austin LDC §25 zoning rules."},
+    {"key": "planner",        "name": "Zoning & Site Planner",      "icon": "🗺️",  "desc": "Auditing site data against local zoning rules."},
     {"key": "inspector",      "name": "Field Inspector",             "icon": "🔍",  "desc": "Reviewing site photos for unpermitted structures and safety hazards."},
 ]
 
@@ -435,7 +453,7 @@ def _load_app_data(app_id: int) -> dict:
         raise RuntimeError(f"Application {app_id} not found in database.")
      # Convert sqlite3.Row to dict so .get() works safely
     row = dict(row)
-    return {
+    data = {
         "address":            row.get("project_address")       or "Unknown address",
         "scope_of_work":      row.get("sow_text")              or "No scope of work provided.",
         "owner":              row.get("owner_name")            or "",
@@ -445,15 +463,17 @@ def _load_app_data(app_id: int) -> dict:
         "zoning_and_overlay": row.get("zoning_type")           or "SF-3",
         "impervious_cover":   row.get("impervious_cover")      or "unknown",
     }
+    data["city"] = _detect_city_from_address(data["address"])
+    return data
 
 
-def _fetch_blueprint_context(app_id: int) -> str:
+def _fetch_blueprint_context(app_id: int, city: str = "austin") -> str:
     """
     Run vision analysis ahead of crew kickoff and return a formatted
     string to embed in the intake agent's blueprint task description.
     """
     try:
-        result = analyse_blueprint(app_id)
+        result = analyse_blueprint(app_id, city=city)
         findings_text = "\n".join(
             f"  - [{d['status'].upper()}] {d['element']}: "
             f"measured={d['measured_value']}, minimum={d['code_minimum']} — {d['detail']}"
@@ -466,6 +486,8 @@ def _fetch_blueprint_context(app_id: int) -> str:
             f"Recommendation: {result.recommendation}"
         )
     except Exception as exc:
+        import traceback
+        traceback.print_exc()
         return f"Blueprint analysis unavailable: {exc}"
 
 UPLOAD_ROOT = "uploads"
@@ -491,24 +513,49 @@ def _build_crew_and_tasks(
     blueprint_context: str,
     photo_paths: list[str],  
     llm: LLM,
+    city_slug: str = "austin",
 ) -> tuple[Crew, list[str]]:
 
+    cfg     = get_city(city_slug)
+    codes   = cfg.adopted_codes
     sow     = app_data.get("scope_of_work", "")
     address = app_data.get("address", "unknown")
     sq_ft   = app_data.get("square_footage", "unknown sqft")
     zoning  = app_data.get("zoning_and_overlay", "SF-3")
     imp_cov = app_data.get("impervious_cover", "unknown")
 
+    res_zoning = cfg.zoning.get("residential")
+    setbacks = res_zoning.setbacks if res_zoning else None
+
+    ren = cfg.application_types.get("REN")
+    code_checks_text = ""
+    if ren and ren.code_references:
+        for ref in ren.code_references[:7]:
+            code_checks_text += f"  - {ref.summary} ({ref.code} {ref.section})\n"
+
+    zoning_text = ""
+    if res_zoning:
+        if setbacks:
+            zoning_text += f"setbacks (front {setbacks.front_ft}ft, rear {setbacks.rear_ft}ft, sides {setbacks.side_ft}ft), "
+        if res_zoning.max_height_ft:
+            zoning_text += f"max height {res_zoning.max_height_ft}ft, "
+        if res_zoning.max_lot_coverage_pct:
+            zoning_text += f"max lot coverage {res_zoning.max_lot_coverage_pct}%, "
+        if res_zoning.max_far:
+            zoning_text += f"FAR {res_zoning.max_far}, "
+
+    city_label = f"{cfg.city_name}, {cfg.state}"
+
     # ── Agents ────────────────────────────────────────────────────────────────
     intake = Agent(
         role="Intake Specialist",
         goal=(
-            "Ensure all required Austin permit docs are present, "
+            f"Ensure all required {city_label} permit docs are present, "
             "interpret blueprint vision findings, review submitted site photos, "
             "look up zoning for the project address, and retrieve past permit history."
         ),
         backstory=(
-            "You are the first line of defense at the Austin Development Services Department. "
+            f"You are the first line of defense at the {city_label} permit office. "
             "You review documents, interpret automated blueprint scans, assess photo submissions, "
             "verify zoning classifications, and check permit history before forwarding to reviewers."
         ),
@@ -519,40 +566,33 @@ def _build_crew_and_tasks(
     )
     code_agent = Agent(
         role="Code Enforcement Official",
-        goal="Audit blueprints for IRC violations (railing height, ceiling height).",
-        backstory="You cross-reference blueprint measurements against the IRC 2021 standards.",
+        goal=f"Audit blueprints for building code violations per {codes.residential}.",
+        backstory=f"You cross-reference blueprint measurements against {codes.building} and {codes.residential}.",
         llm=llm, verbose=True, allow_delegation=False,
     )
     zoning_agent = Agent(
         role="Zoning & Site Planner",
-        goal="Verify compliance with Austin LDC §25 zoning rules including impervious cover limits.",
-        backstory="Licensed TX landscape architect specializing in Austin SF-3, SF-6, and MF districts.",
+        goal=f"Verify compliance with {city_label} zoning rules including setbacks and coverage limits.",
+        backstory=f"Licensed planner specializing in {city_label} zoning districts.",
         llm=llm, verbose=True, allow_delegation=False,
     )
     inspector_agent = Agent(
         role="Field Inspector",
         goal="Review site photos for unpermitted structures and safety hazards.",
-        backstory="Veteran Austin DSD field inspector with 5,000+ site inspections.",
+        backstory=f"Veteran {city_label} field inspector with 5,000+ site inspections.",
         llm=llm, verbose=True, allow_delegation=False,
     )
-
-
 
     # ── Intake Task 1: Blueprint Analysis ─────────────────────────────────────
     task_blueprint = Task(
         description=(
-            f"You are reviewing the uploaded blueprint for permit application at {address}.\n\n"
+            f"You are reviewing the uploaded blueprint for permit application at {address} ({city_label}).\n\n"
             "The following findings were produced by an automated AI vision scan of the blueprint:\n\n"
             f"{blueprint_context}\n\n"
-            "Interpret these findings, flag any IRC violations or warnings, "
+            "Interpret these findings, flag any code violations or warnings, "
             "and produce a structured compliance report.\n\n"
-            "Key IRC checks:\n"
-            "  - Ceiling height ≥ 7 ft habitable rooms (IRC R305.1)\n"
-            "  - Railing height ≥ 36 in (IRC R312.1.2)\n"
-            "  - Egress window ≥ 5.7 sq ft clear opening (IRC R310.2)\n"
-            "  - Room width ≥ 7 ft (IRC R304.3)\n"
-            "  - Hallway width ≥ 36 in (IRC R311.6)\n"
-            "  - Stair width ≥ 36 in (IRC R311.7.1)\n\n"
+            f"Key code checks for {city_label}:\n"
+            f"{code_checks_text}\n"
             + _FINDING_JSON_SCHEMA
         ),
         expected_output="JSON object with summary and findings array.",
@@ -563,7 +603,7 @@ def _build_crew_and_tasks(
     if photo_paths:
         photo_results = []
         for photo in photo_paths:
-            result = run_inference(photo, api_type="local")
+            result = run_inference(photo, api_type="local", city_slug=city_slug)
             if result:
                 photo_results.append(
                     f"--- {os.path.basename(photo)} ---\n{result}"
@@ -576,20 +616,14 @@ def _build_crew_and_tasks(
         )
     else:
         photo_summary = "No photos have been uploaded for this application."
-        # photo_summary = (
-    #         f"{len(photo_paths)} photo(s) submitted:\n" +
-    #         "\n".join(f"  - {os.path.basename(p)}" for p in photo_paths)
-    #         if photo_paths
-    #         else "No photos have been uploaded for this application."
-    #     )
 
     task_photos = Task(
         description=(
-            f"You are reviewing the submitted site photos for permit application at {address}.\n\n"
+            f"You are reviewing the submitted site photos for permit application at {address} ({city_label}).\n\n"
             "The following AI vision analysis was performed on each submitted photo:\n\n"
             f"{photo_summary}\n\n"
             "Based on these photo analyses, produce a consolidated compliance findings report.\n"
-            "Flag: unpermitted structures, setback concerns, heritage trees, safety hazards, "
+            "Flag: unpermitted structures, setback concerns, protected trees, safety hazards, "
             "impervious cover issues, and any evidence of work started before permit.\n\n"
             + _FINDING_JSON_SCHEMA
         ),
@@ -632,12 +666,16 @@ def _build_crew_and_tasks(
     )
 
     # ── Intake Task 5: Document Completeness ───────────────────────────────────
+    doc_checks = ""
+    if ren and ren.special_requirements:
+        for req in ren.special_requirements[:5]:
+            doc_checks += f"  - {req}\n"
+
     task_intake = Task(
         description=(
-            f"Review the permit application for {address}.\n"
+            f"Review the permit application for {address} ({city_label}).\n"
             f"Scope of Work:\n{sow}\n\n"
-            "Check: fire egress plan (IRC R310), engineer stamp (if load-bearing walls), "
-            "energy compliance docs, TDLR license numbers.\n\n"
+            f"Check these {city_label} requirements:\n{doc_checks}\n"
             + _FINDING_JSON_SCHEMA
         ),
         expected_output="JSON object with summary and findings array.",
@@ -647,10 +685,9 @@ def _build_crew_and_tasks(
     # ── Code Enforcement Task ──────────────────────────────────────────────────
     task_code = Task(
         description=(
-            f"Audit the blueprint for {address} — {sq_ft}.\n\n"
-            "IRC 2021 checks: ceiling height min 7ft (R305.1), railing height min 36in (R312.1.2), "
-            "egress window min 5.7 sq ft (R310.2), smoke detectors (R314), CO detectors (R315), "
-            "bathroom ventilation 50 CFM (M1507.4).\n\n"
+            f"Audit the blueprint for {address} — {sq_ft} ({city_label}).\n\n"
+            f"Applicable codes: {codes.building}; {codes.residential}.\n"
+            f"Key checks:\n{code_checks_text}\n"
             + _FINDING_JSON_SCHEMA
         ),
         expected_output="JSON object with summary and findings array.",
@@ -660,9 +697,8 @@ def _build_crew_and_tasks(
     # ── Zoning & Site Planner Task ─────────────────────────────────────────────
     task_zoning = Task(
         description=(
-            f"Zoning audit for {address}. Zoning: {zoning}. Impervious cover: {imp_cov}.\n\n"
-            "LDC §25-2 checks: impervious cover (SF-3 max 45%), setbacks (front 25ft, rear 10ft, sides 5ft), "
-            "max height 35ft, FAR 0.4, tree permit (>19in diameter).\n\n"
+            f"Zoning audit for {address} ({city_label}). Zoning: {zoning}. Impervious cover: {imp_cov}.\n\n"
+            f"Zoning checks: {zoning_text}\n"
             + _FINDING_JSON_SCHEMA
         ),
         expected_output="JSON object with summary and findings array.",
@@ -672,7 +708,7 @@ def _build_crew_and_tasks(
     # ── Field Inspector Task ───────────────────────────────────────────────────
     task_inspection = Task(
         description=(
-            f"Site inspection review for {address}.\n\n"
+            f"Site inspection review for {address} ({city_label}).\n\n"
             "Check: unpermitted structures, setback encroachments, work started before permit, "
             "drainage concerns, accessible parking compliance.\n\n"
             + _FINDING_JSON_SCHEMA
@@ -714,12 +750,13 @@ def _run_crew_in_thread(app_id: str, event_queue: queue.Queue) -> None:
             event_type="agent_start", agent_name=AGENT_META[0]["name"],
             agent_index=0, message="Running blueprint vision analysis…",
         ))
-        blueprint_context = _fetch_blueprint_context(app_id)
+        city_slug = app_data.get("city", "austin")
+        blueprint_context = _fetch_blueprint_context(app_id, city=city_slug)
         photo_paths = _get_photo_paths(app_id)
 
         # 3. Build crew with blueprint context injected into task description
         llm = _llm()
-        crew, _ = _build_crew_and_tasks(app_id, app_data, blueprint_context, photo_paths, llm)
+        crew, _ = _build_crew_and_tasks(app_id, app_data, blueprint_context, photo_paths, llm, city_slug=city_slug)
 
         # 4. Patch callbacks for all 8 tasks
         for i, task in enumerate(crew.tasks):

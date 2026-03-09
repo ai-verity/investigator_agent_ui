@@ -13,6 +13,7 @@ the SOW agent produces the final deliverable.
 
 import json
 import os
+from datetime import date
 from textwrap import dedent
 from typing import Optional
 
@@ -21,7 +22,7 @@ from crewai.tools import tool
 
 from backend.models.schemas import PermitSession,ConversationTurn
 from backend.tools.nim_llm import create_nim_llm
-from backend.austin import *
+from common import get_city
 
 
 # ─────────────────────────────────────────────
@@ -70,7 +71,7 @@ class SOWCrew:
 
     def __init__(self, city: str = "austin"):
         self.city_key = city
-        self.city_cfg = AUSTIN
+        self.city_cfg = get_city(city)
         self.llm = _llm()
         # self.image_tool = ImageAnalyzerTool()
 
@@ -176,9 +177,14 @@ class SOWCrew:
         #         session.image_analyses
         #     )
 
+        today = date.today().strftime("%B %d, %Y")
         return Task(
             description=dedent(f"""
                 Generate a complete, professional permit package for this project.
+
+                **Today's Date: {today}**
+                Use this date wherever a date is needed in the document. Do NOT
+                invent or guess a different date.
 
                 ## Session Data
                 {session_json}

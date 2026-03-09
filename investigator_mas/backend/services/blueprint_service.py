@@ -1,17 +1,14 @@
 """
 blueprint_service.py
 ====================
-Visual reasoning on uploaded blueprints using NVIDIA NIM Gemma 3 27B IT.
-
-Model:   google/gemma-3-27b-it   (multimodal, vision-capable)
-Endpoint: https://integrate.api.nvidia.com/v1   (OpenAI-compat)
+Visual reasoning on uploaded blueprints using a local NIM LLM endpoint.
 
 Flow
 ────
 1. Receive raw blueprint bytes (PDF or image)
 2. If PDF → convert first page to PNG via PyMuPDF (fitz)
 3. Encode to base64
-4. Send to Gemma 3 27B IT with a structured audit prompt
+4. Send to LLM with a structured audit prompt
 5. Parse JSON findings from model response
 6. Persist to blueprint_analysis table
 7. Return structured BlueprintAnalysisResult
@@ -43,7 +40,15 @@ from backend.models.database import (
 )
 
 from backend.tools.nim_llm import create_nim_llm
-from backend.austin import *
+from common import get_city
+
+
+# ─────────────────────────────────────────────
+#  NIM configuration (from environment)
+# ─────────────────────────────────────────────
+
+NIM_BASE_URL = os.getenv("LOCAL_NIM_URL", "http://localhost:8000/v1").rstrip("/")
+NIM_MODEL = os.getenv("MODEL_NAME", "qwen3.5-35b")
 
 
 # ─────────────────────────────────────────────
@@ -132,19 +137,9 @@ def _to_base64_png(raw_bytes: bytes, mime: str) -> tuple[str, str]:
     return base64.b64encode(img_bytes).decode(), "image/png"
 
 
-# ── Prompt ─────────────────────────────────────────────────────────────────────
+# ── Prompt builder ─────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = """You are a certified ICC Building Inspector and licensed Texas architect
-performing visual plan review for the Austin Development Services Department.
-You have 20 years of experience auditing residential blueprints against the
-2021 IRC as adopted by Austin, Texas.
-
-Your task is to analyse the provided blueprint image and identify any
-dimension annotations, measurements, labels, or visual indicators that
-relate to building code compliance.
-
-You must respond ONLY with a JSON object — no markdown, no preamble, no explanation.
-
+_JSON_SCHEMA = """\
 JSON schema:
 {
   "overall_assessment": "<2-3 sentence summary of the blueprint's compliance posture>",
@@ -152,7 +147,7 @@ JSON schema:
     {
       "element": "<architectural element, e.g. 'Master bedroom ceiling'>",
       "measured_value": "<value as shown on blueprint, e.g. '6\\'10\\"'>",
-      "code_minimum": "<applicable IRC minimum, e.g. '7\\'-0\\" (IRC R305.1)'>",
+      "code_minimum": "<applicable code minimum>",
       "status": "<one of: pass | warning | violation | not_visible>",
       "detail": "<one sentence explanation>"
     }
@@ -162,22 +157,44 @@ JSON schema:
 }
 
 If a required dimension is not legible or not shown, set status to 'not_visible' and
-add the element to items_not_visible. Do NOT invent measurements that are not visible.
-"""
+add the element to items_not_visible. Do NOT invent measurements that are not visible."""
 
-_USER_PROMPT = """Please analyse this Austin, TX residential building permit blueprint.
 
-Check for these code-required dimensions and annotations:
-1. Ceiling height in all habitable rooms — minimum 7 ft (IRC R305.1)
-2. Stair and deck railing height — minimum 36 in (IRC R312.1.2)
-3. Egress window annotations — net clear area minimum 5.7 sq ft (IRC R310.2)
-4. Room widths — minimum 7 ft (IRC R304.3)
-5. Hallway widths — minimum 36 in (IRC R311.6)
-6. Stair width — minimum 36 in (IRC R311.7.1)
-7. Any other dimension annotations visible in the drawing
+def _build_prompts(city_slug: str = "austin") -> tuple[str, str]:
+    """Build system and user prompts from the CityConfig for the given city."""
+    cfg = get_city(city_slug)
+    codes = cfg.adopted_codes
 
-Report every dimension you can read from the blueprint.
-Remember: respond ONLY with the JSON object."""
+    system_prompt = (
+        f"You are a certified building inspector performing visual plan review "
+        f"for {cfg.city_name}, {cfg.state}.\n"
+        f"Adopted codes: {codes.building}; {codes.residential}.\n\n"
+        f"Your task is to analyse the provided blueprint image and identify any "
+        f"dimension annotations, measurements, labels, or visual indicators that "
+        f"relate to building code compliance.\n\n"
+        f"You must respond ONLY with a JSON object — no markdown, no preamble, no explanation.\n\n"
+        + _JSON_SCHEMA
+    )
+
+    ren = cfg.application_types.get("REN")
+    code_checks = ""
+    if ren and ren.code_references:
+        for i, ref in enumerate(ren.code_references[:7], 1):
+            code_checks += f"{i}. {ref.summary} ({ref.code} {ref.section})\n"
+
+    user_prompt = (
+        f"Please analyse this {cfg.city_name}, {cfg.state} building permit blueprint.\n\n"
+        f"Check for these code-required dimensions and annotations:\n"
+        f"{code_checks}"
+        f"{len(ren.code_references[:7]) + 1 if ren else 1}. Any other dimension annotations visible in the drawing\n\n"
+        f"Report every dimension you can read from the blueprint.\n"
+        f"Remember: respond ONLY with the JSON object."
+    )
+
+    return system_prompt, user_prompt
+
+
+_SYSTEM_PROMPT, _USER_PROMPT = _build_prompts("austin")
 
 
 # ── Main analysis function ─────────────────────────────────────────────────────
@@ -193,13 +210,13 @@ class BlueprintAnalysisResult:
     from_cache:         bool = False
 
 
-def analyse_blueprint(app_id: int, force_refresh: bool = False) -> BlueprintAnalysisResult:
+def analyse_blueprint(app_id: int, force_refresh: bool = False, city: str = "austin") -> BlueprintAnalysisResult:
     """
-    Run Gemma 3 27B IT visual analysis on the stored blueprint.
+    Run LLM visual analysis on the stored blueprint.
     Results are cached in blueprint_analysis table — subsequent calls return cache
     unless force_refresh=True.
 
-    Raises RuntimeError if no blueprint is stored or NIM key is missing.
+    Raises RuntimeError if no blueprint is stored.
     """
     # ── Check cache ───────────────────────────────────────────────────────────
     if not force_refresh:
@@ -228,31 +245,45 @@ def analyse_blueprint(app_id: int, force_refresh: bool = False) -> BlueprintAnal
     # ── Convert to base64 PNG ─────────────────────────────────────────────────
     b64_image, img_mime = _to_base64_png(raw_bytes, mime)
 
-    # ── Call NVIDIA NIM Gemma 3 27B IT ────────────────────────────────────────
-    client = openai.OpenAI(base_url=NIM_BASE_URL, api_key=_nim_api_key())
+    # ── Build prompts for the target city ────────────────────────────────────
+    sys_prompt, usr_prompt = _build_prompts(city)
+
+    # ── Call local NIM endpoint ────────────────────────────────────────────────
+    client = openai.OpenAI(base_url=NIM_BASE_URL, api_key="not-needed")
 
     response = client.chat.completions.create(
-        model=GEMMA_MODEL,
+        model=NIM_MODEL,
         messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": sys_prompt},
             {
                 "role": "user",
                 "content": [
+                    {"type": "text", "text": usr_prompt},
                     {
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:{img_mime};base64,{b64_image}",
                         },
                     },
-                    {"type": "text", "text": _USER_PROMPT},
                 ],
             },
         ],
-        temperature=0.1,
-        max_tokens=2048,
+        temperature=0.7,
+        max_tokens=4000,
+        extra_body={
+            "chat_template_kwargs": {"enable_thinking": False},
+            "response_format": {"type": "json_object"},
+        },
     )
 
-    raw_text = response.choices[0].message.content.strip()
+    raw_content = response.choices[0].message.content
+    if not raw_content:
+        raise RuntimeError(
+            f"LLM returned empty response for app_id={app_id}. "
+            "The model may not support image input — check that your local NIM model "
+            "is vision-capable or that the blueprint file is valid."
+        )
+    raw_text = raw_content.strip()
 
     # ── Parse JSON ────────────────────────────────────────────────────────────
     findings = _parse_analysis(raw_text)

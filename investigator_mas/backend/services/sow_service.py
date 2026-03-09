@@ -15,8 +15,23 @@ from backend.models.schemas import PermitSession, SOWInput, SOWResponsePayload
 
 from backend.models.database import get_application_by_id, update_application_sow_state
 import json
+from common import get_city_or_none, CITY_ALIASES, list_cities
+
+
+def _detect_city(address: str) -> str:
+    """Extract city slug from address string, defaulting to 'austin'."""
+    addr_lower = (address or "").lower()
+    for alias, slug in sorted(CITY_ALIASES.items(), key=lambda x: -len(x[0])):
+        if alias in addr_lower:
+            return slug
+    for slug in list_cities():
+        if slug.replace("_", " ") in addr_lower:
+            return slug
+    return "austin"
+
+
 def generate_sow(input: SOWInput):
-    city = "austin" if "austin" in (input.project_address or "").lower() else "unknown"
+    city = _detect_city(input.project_address)
     sc = SOWCrew(city)
     ps = None
 

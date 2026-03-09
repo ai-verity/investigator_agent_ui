@@ -160,7 +160,7 @@ def init_db() -> None:
             );
         """)
 
-        # _migrate(conn)
+        _migrate(conn)
 
         # Seed default users
         conn.execute(
@@ -199,6 +199,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     }.items():
         if col not in st_cols:
             conn.execute(sql)
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -269,11 +270,8 @@ def create_application(
     sow_question_answer should match:
         {"context": str, "questions": [{"question": str, "answer": str}]}
     """
-    # _validate_application_status(status)
     sow_qa = sow_question_answer or {"context": "", "questions": []}
     _sow_text = sow_text or ""
-    # _validate_sow_qa(sow_qa)
-    # app_id = application_id
     now = _now_iso()
 
     with get_db() as conn:
@@ -282,7 +280,7 @@ def create_application(
             INSERT INTO applications
                 (application_id, date, application_type, owner_name,
                  project_address, zoning_type, sow_question_answer, sow_text, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?,?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 application_id,
