@@ -23,7 +23,7 @@
               >
                 <div class="record-left">
                   <div class="record-field record-field-permit-id">
-                    <dt>Permit Id:</dt>
+                    <dt>Application Id:</dt>
                     <dd class="record-permit-id-value" [title]="record.permitId">{{ record.permitId }}</dd>
                   </div>
                   <div class="record-field">
@@ -41,12 +41,12 @@
                 </div>
                 <div class="record-right">
                   <div class="record-field">
-                    <dt>Officer Decision:</dt>
-                    <dd><span class="status" [ngClass]="getStatusClass(record.status)">{{ record.status }}</span></dd>
-                  </div>
-                  <div class="record-field">
                     <dt>AI Decision:</dt>
                     <dd>{{ getAiDecisionLabel(record.status) }}</dd>
+                  </div>
+                  <div class="record-field">
+                    <dt>Officer Decision:</dt>
+                    <dd><span class="status" [ngClass]="getStatusClass(record.status)">{{ getOfficerDecisionDisplay(record) }}</span></dd>
                   </div>
                   <div class="record-field">
                     <dt>Permit Type:</dt>
@@ -171,7 +171,10 @@
                     </div>
                   </div>
                 } @else {
-                <div class="decision-section">
+                <div class="decision-section" [class.decision-section-disabled]="isDecisionSectionDisabled">
+                  @if (isDecisionSectionDisabled) {
+                    <p class="decision-section-disabled-msg">Officer decision is not applicable when AI Decision is Critical Violation.</p>
+                  }
                   <h3 class="decision-title">Decision</h3>
                   <div class="decision-options">
                     <label class="radio-option">
@@ -180,6 +183,7 @@
                         name="decisionChoice"
                         value="approve"
                         [checked]="decisionChoice() === 'approve'"
+                        [disabled]="isDecisionSectionDisabled"
                         (change)="decisionChoice.set('approve')"
                       />
                       <span>Approve</span>
@@ -190,6 +194,7 @@
                         name="decisionChoice"
                         value="reject"
                         [checked]="decisionChoice() === 'reject'"
+                        [disabled]="isDecisionSectionDisabled"
                         (change)="decisionChoice.set('reject')"
                       />
                       <span>Reject</span>
@@ -200,6 +205,7 @@
                         name="decisionChoice"
                         value="revision"
                         [checked]="decisionChoice() === 'revision'"
+                        [disabled]="isDecisionSectionDisabled"
                         (change)="decisionChoice.set('revision')"
                       />
                       <span>Request Revision</span>
@@ -212,12 +218,13 @@
                         id="decisionComment"
                         class="officer-analysis-comments"
                         [(ngModel)]="decisionComment"
+                        [disabled]="isDecisionSectionDisabled"
                         placeholder="Add reason or instructions..."
                         rows="3"
                       ></textarea>
                     </div>
                   }
-                  <button type="button" class="decision-confirm-btn" [disabled]="!decisionChoice()" (click)="confirmDecision()">Confirm Decision</button>
+                  <button type="button" class="decision-confirm-btn" [disabled]="!decisionChoice() || isDecisionSectionDisabled" (click)="confirmDecision()">Confirm Decision</button>
                 </div>
                 }
               </div>
@@ -226,7 +233,7 @@
                 <div class="dynamic-content-panel">
                   <button type="button" class="dynamic-panel-close" (click)="closeDynamicPanel()" aria-label="Close">×</button>
 
-                  @if (activeDetailContent() === 0) {
+                  <!-- @if (activeDetailContent() === 0) {
                     <div class="dynamic-panel-content">
                       <h3 class="tab-content-title">Overview Data</h3>
                       <div class="overview-data-panel">
@@ -236,12 +243,11 @@
                       <div class="overview-data-line">Impervious Cover: {{ record.imperviousCoverPct ?? 0 }}%</div>
                       </div>
                     </div>
-                  }
+                  } -->
 
                   @if (activeDetailContent() === 1) {
                     <div class="dynamic-panel-content scope-panel">
                       <h3 class="tab-content-title">Scope of Work</h3>
-                      <p class="scope-applicant-label">Full text submitted by applicant</p>
                       <div class="scope-text-block">
                         <div class="scope-sow-content" [innerHTML]="((record.scopeOfWork ?? '').trim() || '—') | markdown"></div>
                       </div>

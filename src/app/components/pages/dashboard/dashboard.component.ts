@@ -58,7 +58,7 @@ export class DashboardComponent implements OnInit {
 
   selectedRecord = signal<AdminRecord | null>(null);
   otherDetailButtons = [
-    { label: 'Overview', index: 0 },
+    // { label: 'Overview', index: 0 },
     { label: 'Scope', index: 1 },
     { label: 'Blueprint', index: 2 },
     { label: 'Images', index: 3 },
@@ -240,6 +240,18 @@ export class DashboardComponent implements OnInit {
     if (s === 'rejected' || s === 'reject') return 'Non Compliant';
     if (s === 'complete') return 'Compliant'; // treat complete as compliant for display
     return 'Critical Violation';
+  }
+
+  /** When AI Decision is Critical Violation, show Officer Decision as "Not Applicable". */
+  getOfficerDecisionDisplay(record: { status?: string }): string {
+    if (this.getAiDecisionLabel(record?.status) === 'Critical Violation') return 'Not Applicable';
+    return (record?.status ?? '').trim() || '—';
+  }
+
+  /** True when the selected record has AI Decision = Critical Violation; disables the Decision section. */
+  get isDecisionSectionDisabled(): boolean {
+    const record = this.selectedRecord();
+    return record ? this.getAiDecisionLabel(record.status) === 'Critical Violation' : false;
   }
 
   /** Format submitted date/time for display (e.g. "Mar 9, 2026, 5:55 AM"). */

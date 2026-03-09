@@ -778,6 +778,23 @@
   border-radius: 10px;
   border: 1px solid #e5e7eb;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+
+  &.decision-section-disabled {
+    opacity: 0.75;
+    pointer-events: none;
+    background: #f8fafc;
+    border-color: #e2e8f0;
+  }
+}
+
+.decision-section-disabled-msg {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #fef3c7;
+  border-radius: 6px;
+  border-left: 3px solid #d97706;
+  font-size: 0.9rem;
+  color: #92400e;
 }
 
 .decision-confirmation-summary {
@@ -1331,7 +1348,6 @@
 }
 
 .scope-text-block {
-  border: 1px dashed #ccc;
   border-radius: 6px;
   background: #fafafa;
   padding: 0.25rem;
