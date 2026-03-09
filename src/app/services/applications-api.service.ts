@@ -44,6 +44,8 @@ export interface ApplicationListItem {
   submitted_date?: string;
   submitted_time?: string;
   sow_text?: string;
+  blueprint_file_name?: string;
+  site_images_count?: number;
 }
 
 /** Response from POST /applications/{app_id} (view application). Map all fields from API. */
@@ -85,13 +87,13 @@ export interface ReviewStreamFinding {
 }
 
 export interface ReviewStreamEvent {
-  event_type: 'agent_start' | 'agent_done';
+  event_type: 'agent_start' | 'agent_done' | 'complete';
   agent_name: string;
   agent_index: number;
   message: string;
   finding: ReviewStreamFinding | null;
-  all_findings?: unknown;
-  compliance_score?: unknown;
+  all_findings?: ReviewStreamFinding[] | null;
+  compliance_score?: number | null;
 }
 
 @Injectable({

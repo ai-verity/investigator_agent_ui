@@ -53,6 +53,129 @@
   }
 }
 
+// Step 3 (Scope of Work): fit to viewport height with scroll
+.view-application.step3-active .step3-form {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.5rem;
+}
+
+// Step 3: Scope of Work content – card-style section
+.view-application.step3-active .step3-scope-section {
+  margin-bottom: 1.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.view-application.step3-active .step3-scope-title {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: 0.02em;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.view-application.step3-active .step3-scope-content {
+  padding: 1.25rem 1.25rem 1.5rem;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #475569;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 3rem;
+}
+
+// Step 3: images section – screen-sized, side by side, admin-style cards
+.view-application.step3-active .step3-images-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1rem 0 1.25rem;
+  align-items: flex-start;
+}
+
+.view-application.step3-active .step3-image-card {
+  flex: 0 1 auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f8fafc;
+  transition: border-color 0.2s, box-shadow 0.2s;
+
+  &:hover {
+    border-color: #94a3b8;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.view-application.step3-active .step3-image-card-label {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.view-application.step3-active .step3-image-card-body {
+  padding: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+}
+
+.view-application.step3-active .step3-image-card-body.step3-image-card-body--thumbs {
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-height: 120px;
+}
+
+.view-application.step3-active .blueprint-preview,
+.view-application.step3-active .site-images-preview {
+  margin: 0;
+}
+
+.view-application.step3-active .blueprint-preview .blueprint-img,
+.view-application.step3-active .site-images-preview .site-preview-img {
+  max-width: min(220px, 28vw);
+  max-height: min(180px, 22vh);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  border-radius: 6px;
+}
+
+.view-application.step3-active .site-images-preview {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: flex-start;
+}
+
+.view-application.step3-active .site-image-item {
+  flex-shrink: 0;
+}
+
+.view-application.step3-active .image-thumb-btn {
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: block;
+  line-height: 0;
+}
+
 .view-mode-placeholder {
   color: #9ca3af;
   font-style: italic;
@@ -69,13 +192,13 @@
   line-height: 0;
 }
 
-// Blueprint and site images from assets/images (same size as site images)
+// Blueprint and site images from assets/images (larger, one per div)
 .blueprint-preview {
   margin: 0.5rem 0 1rem;
 
   .blueprint-img {
-    max-width: 200px;
-    max-height: 160px;
+    max-width: 360px;
+    max-height: 280px;
     width: auto;
     height: auto;
     object-fit: contain;
@@ -87,19 +210,25 @@
 
 .site-images-preview {
   display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 1rem;
   margin: 0.5rem 0 1rem;
+}
 
-  .site-preview-img {
-    max-width: 200px;
-    max-height: 160px;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-  }
+.site-image-item {
+  flex-shrink: 0;
+}
+
+.site-images-preview .site-preview-img {
+  max-width: 360px;
+  max-height: 280px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  display: block;
 }
 
 // Enlarged image overlay (click image to open, Cancel to close)

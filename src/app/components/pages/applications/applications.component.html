@@ -349,6 +349,12 @@
                 }
               </div>
             }
+            @if (sowLoading) {
+              <div class="ai-message ai-message-bot ai-companion-typing">
+                <span class="chat-loader-spinner" aria-hidden="true"></span>
+                <span class="chat-loader-text">Scope of Work Agent is typing...</span>
+              </div>
+            }
           </div>
           <div class="ai-companion-input-wrap">
             <input

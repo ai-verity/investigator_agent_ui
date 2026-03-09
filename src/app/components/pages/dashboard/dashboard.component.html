@@ -4,41 +4,7 @@
     <h2 class="page-title">{{ title }}</h2>
 
     <div class="list-detail-layout">
-      <div class="left-panel">
-        <div class="filters-section">
-          <div class="filters-row">
-            <div class="filter-group">
-              <label for="filterPermitType" class="filter-label">Permit/Application Type</label>
-              <select
-                id="filterPermitType"
-                class="filter-select filter-select-inline"
-                [ngModel]="filterPermitType()"
-                (ngModelChange)="filterPermitType.set($event)"
-              >
-                @for (opt of permitTypeOptions; track opt) {
-                  <option [value]="opt">{{ opt || 'All' }}</option>
-                }
-              </select>
-              <span class="filter-chevron">▼</span>
-            </div>
-            <span class="filter-divider">|</span>
-            <div class="filter-group">
-              <label for="filterZoningType" class="filter-label">Zoning Type</label>
-              <select
-                id="filterZoningType"
-                class="filter-select filter-select-inline"
-                [ngModel]="filterZoningType()"
-                (ngModelChange)="filterZoningType.set($event)"
-              >
-                @for (opt of zoningTypeOptions; track opt) {
-                  <option [value]="opt">{{ opt || 'All' }}</option>
-                }
-              </select>
-              <span class="filter-chevron">▼</span>
-            </div>
-          </div>
-        </div>
-
+      <div class="left-panel" [class.left-panel-narrow]="activeDetailContent() === 1 || activeDetailContent() === 2">
         <div class="list-section">
           @if (adminRecordsError) {
             <p class="error-text admin-records-error">{{ adminRecordsError }}</p>
@@ -49,16 +15,16 @@
             </div>
           }
           <div class="records-list">
-            @for (record of filteredRecords(); track record.permitId) {
+            @for (record of adminRecords; track record.permitId) {
               <div
                 class="record-card"
                 [class.selected]="selectedRecord()?.permitId === record.permitId"
                 (click)="selectRecord(record)"
               >
                 <div class="record-left">
-                  <div class="record-field">
+                  <div class="record-field record-field-permit-id">
                     <dt>Permit Id:</dt>
-                    <dd>{{ record.permitId }}</dd>
+                    <dd class="record-permit-id-value" [title]="record.permitId">{{ record.permitId }}</dd>
                   </div>
                   <div class="record-field">
                     <dt>Applicant:</dt>
@@ -80,7 +46,7 @@
                   </div>
                   <div class="record-field">
                     <dt>AI Decision:</dt>
-                    <dd>{{ record.daysElapsed }} days</dd>
+                    <dd>{{ getAiDecisionLabel(record.status) }}</dd>
                   </div>
                   <div class="record-field">
                     <dt>Permit Type:</dt>
@@ -88,13 +54,13 @@
                   </div>
                   <div class="record-field">
                     <dt>Submitted Date:</dt>
-                    <dd>{{ record.submittedDate }}</dd>
+                    <dd>{{ formatSubmittedDateTime(record.submittedDate, record.submittedTime) }}</dd>
                   </div>
                 </div>
               </div>
             }
-            @if (!adminRecordsLoading && filteredRecords().length === 0) {
-              <p class="no-records">{{ adminRecords.length === 0 ? 'No applications found.' : 'No records match the filters.' }}</p>
+            @if (!adminRecordsLoading && adminRecords.length === 0) {
+              <p class="no-records">No applications found.</p>
             }
           </div>
         </div>
@@ -103,7 +69,13 @@
       <div class="right-panel">
         <div class="detail-section">
           @if (selectedRecord(); as record) {
-            <div class="detail-split" [class.dynamic-open]="activeDetailContent() >= 0">
+            <div
+              class="detail-split"
+              [class.dynamic-open]="activeDetailContent() >= 0"
+              [class.scope-open]="activeDetailContent() === 1"
+              [class.blueprint-open]="activeDetailContent() === 2"
+              [attr.data-selected-permit]="record.permitId"
+            >
               <div class="ai-analysis-panel">
                 <div class="ai-analysis-header">
                   <h3 class="ai-analysis-title">AI ANALYSIS</h3>
@@ -119,7 +91,7 @@
                   <div class="ai-summary-heading">AI Summary:</div>
                   <ul class="ai-summary-list">
                     @for (issue of detectedIssues(); track issue) {
-                      <li>– {{ issue }}</li>
+                      <li>{{ issue }}</li>
                     }
                   </ul>
                 </div>
@@ -267,18 +239,11 @@
                   }
 
                   @if (activeDetailContent() === 1) {
-                    <div class="dynamic-panel-content">
+                    <div class="dynamic-panel-content scope-panel">
                       <h3 class="tab-content-title">Scope of Work</h3>
                       <p class="scope-applicant-label">Full text submitted by applicant</p>
                       <div class="scope-text-block">
-                        <textarea
-                          id="scopeData"
-                          class="scope-textarea scope-textarea-readonly"
-                          placeholder="Scope of work details will appear here."
-                          rows="8"
-                          readonly
-                          [ngModel]="record.scopeOfWork ?? ''"
-                        ></textarea>
+                        <div class="scope-sow-content" [innerHTML]="((record.scopeOfWork ?? '').trim() || '—') | markdown"></div>
                       </div>
                     </div>
                   }
@@ -299,15 +264,20 @@
                         (mouseup)="onBlueprintMouseUp()"
                         (mouseleave)="onBlueprintMouseUp()"
                         [class.blueprint-dragging]="blueprintDragging"
+                        [class.blueprint-can-pan]="blueprintZoom() > 1"
                       >
                         <div
                           class="blueprint-content"
                           [style.transform]="getBlueprintTransform()"
                         >
-                          <div class="blueprint-placeholder">
-                            <span>Blueprint document</span>
-                            <span class="blueprint-placeholder-sub">Zoom / Pan enabled</span>
-                          </div>
+                          <img
+                            [src]="getBlueprintImageUrl()"
+                            alt="Blueprint"
+                            class="blueprint-img"
+                            draggable="false"
+                            (dragstart)="$event.preventDefault()"
+                            (error)="$any($event.target).style.display='none'"
+                          />
                         </div>
                       </div>
                     </div>
@@ -317,17 +287,17 @@
                     <div class="dynamic-panel-content">
                       <h3 class="tab-content-title">Site Images</h3>
                       <div class="site-images-thumbs">
-                        @for (i of [1, 2, 3]; track i) {
-                          <button
-                            type="button"
-                            class="site-image-thumb"
-                            (click)="openImageEnlarged(i)"
-                          >
-                            Image {{ i }}
-                          </button>
+                        @for (url of getSiteImageUrls(); track url) {
+                          <div class="site-image-item">
+                            <button type="button" class="site-image-thumb" (click)="openImageEnlargedByUrl(url)" [attr.aria-label]="'View image full size'">
+                              <img [src]="url" alt="Site image" class="site-image-thumb-img" (error)="$any($event.target).style.display='none'" />
+                            </button>
+                          </div>
                         }
                       </div>
-                      <p class="site-images-hint">Click to enlarge</p>
+                      @if (getSiteImageUrls().length === 0) {
+                        <p class="site-images-hint">No site images.</p>
+                      }
                     </div>
                   }
                 </div>
@@ -339,6 +309,14 @@
                 <div class="image-enlarge-content" (click)="$event.stopPropagation()">
                   <button type="button" class="image-enlarge-close" (click)="closeImageEnlarged()" aria-label="Close">×</button>
                   <div class="image-enlarge-placeholder">Image {{ imgIndex }} – Enlarged view</div>
+                </div>
+              </div>
+            }
+            @if (enlargedImageUrl) {
+              <div class="image-enlarge-backdrop" (click)="closeImageEnlarged()" role="button" tabindex="0" aria-label="Close enlarged image">
+                <div class="image-enlarge-content image-enlarge-content-with-img" (click)="$event.stopPropagation()">
+                  <img [src]="enlargedImageUrl" alt="Enlarged view" class="image-enlarge-img" />
+                  <button type="button" class="btn-secondary image-enlarge-cancel" (click)="closeImageEnlarged()">Cancel</button>
                 </div>
               </div>
             }

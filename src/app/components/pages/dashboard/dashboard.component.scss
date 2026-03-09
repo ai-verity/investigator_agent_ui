@@ -75,8 +75,13 @@
 .list-detail-layout {
   display: flex;
   gap: 1rem;
-  min-height: 480px;
+  min-height: 600px;
+  // Make the list area use the screen height so the list can scroll.
+  // Offset accounts for page title + top spacing.
+  height: calc(100vh - 180px);
+  max-height: calc(100vh - 180px);
   margin-top: 1rem;
+  align-items: stretch;
 }
 
 .left-panel {
@@ -90,6 +95,12 @@
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(22, 33, 62, 0.06);
   overflow: hidden;
+  transition: flex-basis 0.2s ease, width 0.2s ease;
+  height: 100%;
+
+  &.left-panel-narrow {
+    flex: 0 0 28%;
+  }
 
   &.left-panel-full {
     flex: 1 1 100%;
@@ -207,9 +218,11 @@
 
 .records-list {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 0.75rem;
   background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+  scrollbar-gutter: stable;
 }
 
 .record-card {
@@ -226,6 +239,8 @@
   border: 1px solid #e5e7eb;
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  min-width: 0;
+  overflow: hidden;
 
   &:last-child {
     margin-bottom: 0;
@@ -262,9 +277,16 @@
   gap: 0.4rem;
 }
 
+.record-left {
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 55%;
+}
+
 .record-right {
   text-align: right;
   flex-shrink: 0;
+  min-width: 0;
 
   .record-field {
     justify-content: flex-end;
@@ -300,6 +322,22 @@
   letter-spacing: 0.02em;
 }
 
+// Keep Permit Id on a single line (ellipsis; full value on hover); prevent layout overflow
+.record-field-permit-id {
+  min-width: 0;
+  overflow: hidden;
+}
+.record-permit-id-value {
+  font-size: 0.75rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+}
+
 .no-records {
   padding: 2rem 1.5rem;
   text-align: center;
@@ -320,6 +358,7 @@
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(22, 33, 62, 0.06);
   overflow: auto;
+  height: 100%;
 }
 
 .detail-section {
@@ -345,6 +384,32 @@
     flex: 1;
     min-width: 200px;
   }
+
+  // When Blueprint tab is open, give more width to the dynamic panel (viewer)
+  &.blueprint-open {
+    .ai-analysis-panel {
+      flex: 0 0 34%;
+      min-width: 260px;
+    }
+
+    .dynamic-content-panel {
+      flex: 1 1 auto;
+      min-width: 520px;
+    }
+  }
+
+  // When Scope tab is open, same layout: narrow AI panel, wide content
+  &.scope-open {
+    .ai-analysis-panel {
+      flex: 0 0 34%;
+      min-width: 260px;
+    }
+
+    .dynamic-content-panel {
+      flex: 1 1 auto;
+      min-width: 520px;
+    }
+  }
 }
 
 .dynamic-content-panel {
@@ -356,6 +421,9 @@
   overflow: auto;
   padding: 1.25rem 1.5rem;
   padding-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .dynamic-panel-close {
@@ -401,6 +469,113 @@
 
 .dynamic-panel-content {
   padding: 0.25rem 0;
+}
+
+// Scope tab: fill same height as list/detail layout and scroll inside
+.scope-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.scope-panel .scope-text-block {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.scope-panel .scope-sow-content {
+  flex: 1;
+  min-height: 200px;
+  overflow-y: auto;
+  padding: 1rem 1.1rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+
+  :deep(.sow-markdown) {
+    font-family: system-ui, -apple-system, sans-serif;
+
+    .sow-h1 {
+      margin: 0 0 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #16213e;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 0.35rem;
+    }
+
+    .sow-h2 {
+      margin: 1.25rem 0 0.5rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    .sow-h3 {
+      margin: 1rem 0 0.4rem;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .sow-p {
+      margin: 0.4rem 0;
+      color: #475569;
+    }
+
+    .sow-hr {
+      margin: 1rem 0;
+      border: none;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .sow-ul {
+      margin: 0.5rem 0;
+      padding-left: 1.25rem;
+      color: #475569;
+
+      &.sow-ul-num {
+        list-style: decimal;
+      }
+    }
+
+    .sow-li {
+      margin: 0.25rem 0;
+    }
+
+    .sow-table {
+      width: 100%;
+      margin: 0.75rem 0;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+
+      th,
+      td {
+        border: 1px solid #e2e8f0;
+        padding: 0.5rem 0.65rem;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #f1f5f9;
+        font-weight: 600;
+        color: #334155;
+      }
+
+      td {
+        color: #475569;
+      }
+    }
+  }
 }
 
 // AI Analysis panel – modern AI-era styling
@@ -968,13 +1143,17 @@
 .blueprint-viewport {
   position: relative;
   width: 100%;
-  height: 280px;
+  height: 420px;
   overflow: hidden;
   border: 1px dashed #ccc;
   border-radius: 6px;
   background: #f5f5f5;
-  cursor: grab;
+  cursor: default;
   user-select: none;
+
+  &.blueprint-can-pan {
+    cursor: grab;
+  }
 
   &.blueprint-dragging {
     cursor: grabbing;
@@ -983,10 +1162,25 @@
 
 .blueprint-content {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transform-origin: center center;
   will-change: transform;
+
+  .blueprint-img {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    object-fit: contain;
+    border-radius: 6px;
+    pointer-events: none; // let the viewport capture drag events
+    user-select: none;
+    -webkit-user-drag: none;
+  }
 }
 
 .blueprint-placeholder {
@@ -1017,24 +1211,38 @@
 
 .site-images-thumbs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 1rem;
   margin-bottom: 0.5rem;
 }
 
+.site-image-item {
+  width: 100%;
+}
+
 .site-image-thumb {
-  padding: 0.75rem 1rem;
-  font-size: 0.9rem;
-  color: #333;
-  background: #f0f0f0;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
   cursor: pointer;
+  background: #f8fafc;
+  display: block;
+  width: 100%;
 
   &:hover {
-    background: #e8e8e8;
-    border-color: #999;
+    border-color: #94a3b8;
+    background: #f1f5f9;
   }
+}
+
+.site-image-thumb-img {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: 280px;
+  object-fit: contain;
+  vertical-align: middle;
 }
 
 .site-images-hint {
@@ -1062,6 +1270,27 @@
   padding: 2rem;
   max-width: 90vw;
   max-height: 90vh;
+}
+
+.image-enlarge-content-with-img {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.image-enlarge-img {
+  max-width: 85vw;
+  max-height: 75vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  border-radius: 6px;
+}
+
+.image-enlarge-cancel {
+  flex-shrink: 0;
 }
 
 .image-enlarge-close {
@@ -1111,7 +1340,7 @@
 .scope-textarea {
   width: 100%;
   max-width: 100%;
-  min-height: 140px;
+  min-height: 320px;
   padding: 0.75rem;
   font-size: 0.95rem;
   font-family: inherit;

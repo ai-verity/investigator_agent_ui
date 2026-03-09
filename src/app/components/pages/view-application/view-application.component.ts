@@ -2,6 +2,7 @@ import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { ApplicationsApiService, ApplicationDetail } from '../../../services/applications-api.service';
+import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 
 /** Record data for view application page – all values from API, no hardcoding. */
 export interface ViewApplicationRecord {
@@ -30,7 +31,7 @@ export interface ViewApplicationRecord {
 @Component({
   selector: 'app-view-application',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MarkdownPipe],
   templateUrl: './view-application.component.html',
   styleUrl: './view-application.component.scss',
 })

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { ApplicationsApiService, ApplicationListItem } from '../../../services/applications-api.service';
+import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 
 export interface Permit {
   permitId: string;
@@ -31,12 +32,14 @@ export interface AdminRecord {
   allowedHeightFt?: number;
   imperviousCoverPct?: number;
   scopeOfWork?: string;
+  blueprintFileName?: string;
+  siteImagesCount?: number;
 }
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MarkdownPipe],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
@@ -48,9 +51,7 @@ export class DashboardComponent implements OnInit {
   userPermitsLoading = false;
   userPermitsError = '';
 
-  // Admin view: filters + list + detail (loaded from list applications API)
-  filterPermitType = signal<string>('');
-  filterZoningType = signal<string>('');
+  // Admin view: list + detail (no filters for now)
   adminRecords: AdminRecord[] = [];
   adminRecordsLoading = false;
   adminRecordsError = '';
@@ -112,55 +113,14 @@ export class DashboardComponent implements OnInit {
 
   siteImagesEnlarged = signal<number | null>(null); // 1-based index of image shown enlarged, null = none
 
+  /** Enlarged image URL for admin blueprint/site images overlay; null when closed. */
+  enlargedImageUrl: string | null = null;
+
   blueprintZoom = signal(1);
   blueprintPan = signal({ x: 0, y: 0 });
   blueprintDragging = false;
   private blueprintLastPan = { x: 0, y: 0 };
   private blueprintLastClient = { x: 0, y: 0 };
-
-  permitTypeOptions = ['', 'New Construction', 'Remodel/Alteration', 'Demolition'];
-  zoningTypeOptions = ['', 'Residential', 'Commercial', 'Industrial', 'Mixed-Use', 'Civic/Public'];
-
-  filteredRecords = computed(() => {
-    let permitType = (this.filterPermitType() || '').trim();
-    let zoningType = (this.filterZoningType() || '').trim();
-    if (permitType.toLowerCase() === 'all') permitType = '';
-    if (zoningType.toLowerCase() === 'all') zoningType = '';
-    return this.adminRecords.filter((r) => {
-      if (permitType && this.normalizeForFilter(r.permitType) !== this.normalizeForFilter(permitType)) return false;
-      if (zoningType && this.normalizeForFilter(r.zoningType) !== this.normalizeForFilter(zoningType)) return false;
-      return true;
-    });
-  });
-
-  /** Case-insensitive normalize for filter comparison; map API values to dropdown option values. */
-  private normalizeForFilter(value: string | undefined): string {
-    if (value === undefined || value === null) return '';
-    const v = String(value).trim().toLowerCase();
-    const permitMap: Record<string, string> = {
-      new: 'new construction',
-      'new construction': 'new construction',
-      remodel: 'remodel/alteration',
-      alteration: 'remodel/alteration',
-      'remodel/alteration': 'remodel/alteration',
-      demolition: 'demolition',
-    };
-    const zoningMap: Record<string, string> = {
-      residential: 'residential',
-      commercial: 'commercial',
-      industrial: 'industrial',
-      'mixed-use': 'mixed-use',
-      'mixed use': 'mixed-use',
-      'civic/public': 'civic/public',
-      civic: 'civic/public',
-      public: 'civic/public',
-    };
-    const p = permitMap[v];
-    if (p) return p;
-    const z = zoningMap[v];
-    if (z) return z;
-    return v;
-  }
 
   constructor(
     public auth: AuthService,
@@ -228,6 +188,8 @@ export class DashboardComponent implements OnInit {
       submittedDate: toStr(it.submitted_date ?? it.date) || '—',
       submittedTime: toStr(it.submitted_time) || '—',
       scopeOfWork: it.sow_text ? toStr(it.sow_text) : undefined,
+      blueprintFileName: it.blueprint_file_name ? toStr(it.blueprint_file_name) : undefined,
+      siteImagesCount: it.site_images_count != null ? Number(it.site_images_count) : undefined,
     };
   }
 
@@ -263,18 +225,68 @@ export class DashboardComponent implements OnInit {
     return this.auth.currentRole === 'admin';
   }
 
+  /**
+   * Map Officer Decision (status) to AI Decision per the rules:
+   * NA → Critical Violation; Approved → Compliant; Under Review → Compliant;
+   * Requested for Revision / Rejected → Non Compliant.
+   */
+  getAiDecisionLabel(officerStatus: string | undefined): string {
+    if (officerStatus === undefined || officerStatus === null) return 'Critical Violation';
+    const s = officerStatus.trim().toLowerCase();
+    if (s === '' || s === 'na' || s === 'pending') return 'Critical Violation';
+    if (s === 'approved' || s === 'approve') return 'Compliant';
+    if (s === 'under review') return 'Compliant';
+    if (s === 'requested for revision' || s === 'requested revision' || s === 'revision') return 'Non Compliant';
+    if (s === 'rejected' || s === 'reject') return 'Non Compliant';
+    if (s === 'complete') return 'Compliant'; // treat complete as compliant for display
+    return 'Critical Violation';
+  }
+
+  /** Format submitted date/time for display (e.g. "Mar 9, 2026, 5:55 AM"). */
+  formatSubmittedDateTime(dateStr?: string, timeStr?: string): string {
+    const raw = (dateStr ?? '').trim() || (timeStr ?? '').trim();
+    if (!raw) return '—';
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return dateStr ?? '—';
+    const datePart = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${datePart}, ${timePart}`;
+  }
+
+  /** Blueprint image from assets/images/blueprint for selected record (admin). */
+  getBlueprintImageUrl(): string {
+    const record = this.selectedRecord();
+    if (!record) return 'assets/images/blueprint/old_permit_modified 1.jpg';
+    const name = record.blueprintFileName?.trim();
+    if (name) return `assets/images/blueprint/${name}`;
+    return 'assets/images/blueprint/old_permit_modified 1.jpg';
+  }
+
+  /** Site image URLs from assets/images/site-images for selected record (admin). */
+  getSiteImageUrls(): string[] {
+    const files = ['front_view.png', 'back_view.png'];
+    const record = this.selectedRecord();
+    const count = record?.siteImagesCount;
+    const n = typeof count === 'number' ? Math.min(Math.max(0, count), files.length) : files.length;
+    return files.slice(0, n || files.length).map((f) => `assets/images/site-images/${f}`);
+  }
+
+  openImageEnlargedByUrl(url: string): void {
+    this.enlargedImageUrl = url;
+  }
+
   viewPermit(permit: Permit): void {
     console.log('View permit', permit.permitId);
   }
 
   selectRecord(record: AdminRecord): void {
-    this.selectedRecord.set(record);
-    this.activeDetailContent.set(-1); // no tab selected until user clicks one
+    if (!record) return;
+    this.selectedRecord.set({ ...record });
+    this.activeDetailContent.set(-1);
     this.decisionConfirmed.set(false);
     this.decisionConfirmedChoice.set(null);
     this.decisionConfirmedAt.set(null);
     this.decisionRevisionComment.set('');
-    // Reset form state so AI Analysis panel reflects the new record
     this.officerComments = '';
     this.decisionChoice.set(null);
     this.decisionComment = '';
@@ -317,7 +329,14 @@ export class DashboardComponent implements OnInit {
       if (choice === 'revision' || choice === 'reject') {
         this.decisionRevisionComment.set(this.decisionComment || '');
       }
-      // Placeholder: submit to API
+      // Update selected record status so list and AI Decision reflect officer decision
+      const record = this.selectedRecord();
+      if (record) {
+        const statusMap = { approve: 'Approved', reject: 'Rejected', revision: 'Requested Revision' } as const;
+        record.status = statusMap[choice];
+        const idx = this.adminRecords.findIndex((r) => r.permitId === record.permitId);
+        if (idx !== -1) this.adminRecords[idx] = { ...this.adminRecords[idx], status: record.status };
+      }
     }
   }
 
@@ -338,6 +357,7 @@ export class DashboardComponent implements OnInit {
 
   closeImageEnlarged(): void {
     this.siteImagesEnlarged.set(null);
+    this.enlargedImageUrl = null;
   }
 
   downloadAnalysis(): void {
@@ -360,29 +380,34 @@ export class DashboardComponent implements OnInit {
   getBlueprintTransform(): string {
     const zoom = this.blueprintZoom();
     const pan = this.blueprintPan();
-    return `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
+    // Divide pan by zoom so drag moves in screen pixels even when zoomed.
+    const dx = pan.x / (zoom || 1);
+    const dy = pan.y / (zoom || 1);
+    return `translate(${dx}px, ${dy}px) scale(${zoom})`;
   }
 
   onBlueprintMouseDown(event: MouseEvent): void {
+    // Only allow panning when zoomed in.
+    if (this.blueprintZoom() <= 1) return;
     this.blueprintDragging = true;
     this.blueprintLastClient = { x: event.clientX, y: event.clientY };
     this.blueprintLastPan = { ...this.blueprintPan() };
   }
 
   onBlueprintMouseMove(event: MouseEvent): void {
-    if (!this.blueprintDragging) return;
+    if (!this.blueprintDragging || this.blueprintZoom() <= 1) return;
     const dx = event.clientX - this.blueprintLastClient.x;
     const dy = event.clientY - this.blueprintLastClient.y;
     this.blueprintLastClient = { x: event.clientX, y: event.clientY };
+    const pan = this.blueprintPan();
     this.blueprintPan.set({
-      x: this.blueprintLastPan.x + dx,
-      y: this.blueprintLastPan.y + dy,
+      x: pan.x + dx,
+      y: pan.y + dy,
     });
   }
 
   onBlueprintMouseUp(): void {
     this.blueprintDragging = false;
-    this.blueprintLastPan = { ...this.blueprintPan() };
   }
 
   @HostListener('window:mousemove', ['$event'])
@@ -393,6 +418,11 @@ export class DashboardComponent implements OnInit {
   @HostListener('window:mouseup')
   onWindowMouseUp(): void {
     if (this.blueprintDragging) this.onBlueprintMouseUp();
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.enlargedImageUrl) this.closeImageEnlarged();
   }
 
   openFeedbackModal(): void {

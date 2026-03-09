@@ -5,6 +5,7 @@ import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } 
 import { ApplicationsApiService, StartApplicationRequest, SowRequest, SowResponse, ReviewStreamEvent } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 import { forkJoin, of, Subscription } from 'rxjs';
+import { finalize } from 'rxjs/operators';
 
 type ApplicantType = 'individual' | 'business' | 'ngo';
 
@@ -17,17 +18,17 @@ export interface ComplianceFinding {
   status: FindingStatus;
 }
 
-/** Status for Intake Agent – driven by background API */
-export type IntakeAgentStatus = 'Completed' | 'Reviewing your documents…' | 'Waiting';
+/** Status for Intake Agent – driven by stream; can be stream message when working */
+export type IntakeAgentStatus = 'Completed' | 'Reviewing your documents…' | 'Waiting' | string;
 
-/** Status for Code Enforcement Agent – driven by background API */
-export type CodeAgentStatus = 'Completed' | 'Reviewing building regulations…' | 'Waiting';
+/** Status for Code Enforcement Agent – driven by stream; can be stream message when working */
+export type CodeAgentStatus = 'Completed' | 'Reviewing building regulations…' | 'Waiting' | string;
 
-/** Status for Planning Agent – driven by background API */
-export type PlannerAgentStatus = 'Completed' | 'Reviewing zoning requirements…' | 'Waiting';
+/** Status for Planning Agent – driven by stream; can be stream message when working */
+export type PlannerAgentStatus = 'Completed' | 'Reviewing zoning requirements…' | 'Waiting' | string;
 
-/** Status for Inspector Agent – driven by background API */
-export type InspectorAgentStatus = 'Completed' | 'Finalizing your compliance summary…' | 'Waiting';
+/** Status for Inspector Agent – driven by stream; can be stream message when working */
+export type InspectorAgentStatus = 'Completed' | 'Finalizing your compliance summary…' | 'Waiting' | string;
 
 export interface AgentActivityEvent {
   agentName: string;
@@ -150,7 +151,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     },
   ];
 
-  /** Filled from review stream agent_done events (finding objects); empty until stream delivers. */
+  /** Filled from review stream agent_done events (finding objects); or from "complete" event all_findings. */
   complianceFindings: ComplianceFinding[] = [];
 
   submissionPermitId = 'BLR-006';
@@ -424,9 +425,9 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     this.reviewStreamSubscription = null;
     this.reviewStreamError = '';
 
-    this.intakeAgentStatus = 'Reviewing your documents…';
-    this.codeAgentStatus = 'Reviewing building regulations…';
-    this.plannerAgentStatus = 'Reviewing zoning requirements…';
+    this.intakeAgentStatus = 'Waiting';
+    this.codeAgentStatus = 'Waiting';
+    this.plannerAgentStatus = 'Waiting';
     this.inspectorAgentStatus = 'Waiting';
 
     // Reset timeline times so they update from the stream
@@ -468,36 +469,74 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     );
   }
 
-  /** Map SSE event (event_type, agent_name, finding) to Step 4 agent statuses and Step 5 compliance findings. Only one agent shows "Reviewing…" at a time (line by line). */
+  /**
+   * Display status for the 4 agents from stream event.
+   * For "Intake: Blueprint Analysis" → "Blueprint Analysis"; for others use message.
+   */
+  private getDisplayStatusForStream(event: ReviewStreamEvent): string {
+    const name = event.agent_name || '';
+    if (name.startsWith('Intake: ')) return name.slice('Intake: '.length).trim();
+    return event.message || 'Working…';
+  }
+
+  /**
+   * Map stream agent_name to one of the 4 agents: Intake, Code Enforcement, Planning, Inspector.
+   */
+  private getAgentKeyFromStreamName(agentName: string): 'intake' | 'code' | 'planner' | 'inspector' | null {
+    const name = (agentName || '').toLowerCase();
+    if (name.includes('intake')) return 'intake';
+    if (name.includes('code enforcement') || name === 'code enforcement') return 'code';
+    if (name.includes('zoning') || name.includes('planner') || name.includes('planning')) return 'planner';
+    if (name.includes('inspector') || name.includes('field inspector')) return 'inspector';
+    return null;
+  }
+
+  /** Map SSE event to the 4 agents only. Agent name stays fixed; status shows sub-task (e.g. "Blueprint Analysis") or message, then "Completed". Handles event_type "complete". */
   private applyReviewStreamEvent(event: ReviewStreamEvent): void {
-    const name = (event.agent_name || '').toLowerCase();
+    const isComplete = event.event_type === 'complete';
     const isStart = event.event_type === 'agent_start';
     const isDone = event.event_type === 'agent_done';
+    const time = this.getCurrentTimeFormatted();
 
-    let agentKey: 'intake' | 'code' | 'planner' | 'inspector' | null = null;
-    if (name.includes('intake')) agentKey = 'intake';
-    else if (name.includes('code')) agentKey = 'code';
-    else if (name.includes('planner') || name.includes('planning')) agentKey = 'planner';
-    else if (name.includes('inspector')) agentKey = 'inspector';
+    if (isComplete) {
+      this.setIntakeAgentStatus('Completed');
+      this.setCodeAgentStatus('Completed');
+      this.setPlannerAgentStatus('Completed');
+      this.setInspectorAgentStatus('Completed');
+      if (Array.isArray(event.all_findings) && event.all_findings.length > 0) {
+        this.complianceFindings = event.all_findings.map((f) => {
+          const severity = (f.severity || '').toLowerCase();
+          let status: FindingStatus = 'Follow-up';
+          if (severity === 'critical') status = 'Critical';
+          else if (severity === 'warning') status = 'Warning';
+          else if (severity === 'violation') status = 'Violation';
+          else if (severity === 'pass') status = 'Follow-up';
+          return {
+            agent: f.agent || '—',
+            findings: f.finding || '',
+            aiSuggestion: f.detail ?? '',
+            status,
+          };
+        });
+      }
+      return;
+    }
 
-    if (isStart) {
-      // Ensure only one agent is "Reviewing" at a time: clear any other agent currently in progress to Waiting
-      if (this.intakeAgentStatus === 'Reviewing your documents…') this.setIntakeAgentStatus('Waiting');
-      if (this.codeAgentStatus === 'Reviewing building regulations…') this.setCodeAgentStatus('Waiting');
-      if (this.plannerAgentStatus === 'Reviewing zoning requirements…') this.setPlannerAgentStatus('Waiting');
-      if (this.inspectorAgentStatus === 'Finalizing your compliance summary…') this.setInspectorAgentStatus('Waiting');
-      // Then set the current agent to Reviewing and update its time
-      if (agentKey === 'intake') this.setIntakeAgentStatus('Reviewing your documents…');
-      else if (agentKey === 'code') this.setCodeAgentStatus('Reviewing building regulations…');
-      else if (agentKey === 'planner') this.setPlannerAgentStatus('Reviewing zoning requirements…');
-      else if (agentKey === 'inspector') this.setInspectorAgentStatus('Finalizing your compliance summary…');
-      if (agentKey) this.updateAgentEventTime(agentKey);
-    } else if (isDone) {
+    const agentKey = this.getAgentKeyFromStreamName(event.agent_name || '');
+
+    if (isStart && agentKey) {
+      const displayStatus = this.getDisplayStatusForStream(event);
+      if (agentKey === 'intake') this.setIntakeAgentStatus(displayStatus);
+      else if (agentKey === 'code') this.setCodeAgentStatus(displayStatus);
+      else if (agentKey === 'planner') this.setPlannerAgentStatus(displayStatus);
+      else if (agentKey === 'inspector') this.setInspectorAgentStatus(displayStatus);
+      this.updateAgentEventTime(agentKey);
+    } else if (isDone && agentKey) {
       if (agentKey === 'intake') this.setIntakeAgentStatus('Completed');
       else if (agentKey === 'code') this.setCodeAgentStatus('Completed');
       else if (agentKey === 'planner') this.setPlannerAgentStatus('Completed');
       else if (agentKey === 'inspector') this.setInspectorAgentStatus('Completed');
-      if (agentKey) this.updateAgentEventTime(agentKey);
+      this.updateAgentEventTime(agentKey);
     }
 
     if (isDone && event.finding) {
@@ -523,16 +562,9 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
 
   /** CSS class for Intake agent status (for styling Completed / Reviewing… / Waiting) */
   getIntakeAgentStatusClass(): string {
-    switch (this.intakeAgentStatus) {
-      case 'Completed':
-        return 'status-done';
-      case 'Reviewing your documents…':
-        return 'status-progress';
-      case 'Waiting':
-        return 'status-pending';
-      default:
-        return 'status-pending';
-    }
+    if (this.intakeAgentStatus === 'Completed') return 'status-done';
+    if (this.intakeAgentStatus === 'Waiting') return 'status-pending';
+    return 'status-progress'; // any "reviewing" or stream message
   }
 
   /** Call this from your background API to update Code Enforcement agent status */
@@ -542,16 +574,9 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
 
   /** CSS class for Code Enforcement agent status */
   getCodeAgentStatusClass(): string {
-    switch (this.codeAgentStatus) {
-      case 'Completed':
-        return 'status-done';
-      case 'Reviewing building regulations…':
-        return 'status-progress';
-      case 'Waiting':
-        return 'status-pending';
-      default:
-        return 'status-pending';
-    }
+    if (this.codeAgentStatus === 'Completed') return 'status-done';
+    if (this.codeAgentStatus === 'Waiting') return 'status-pending';
+    return 'status-progress';
   }
 
   /** Call this from your background API to update Planning agent status */
@@ -561,16 +586,9 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
 
   /** CSS class for Planning agent status */
   getPlannerAgentStatusClass(): string {
-    switch (this.plannerAgentStatus) {
-      case 'Completed':
-        return 'status-done';
-      case 'Reviewing zoning requirements…':
-        return 'status-progress';
-      case 'Waiting':
-        return 'status-pending';
-      default:
-        return 'status-pending';
-    }
+    if (this.plannerAgentStatus === 'Completed') return 'status-done';
+    if (this.plannerAgentStatus === 'Waiting') return 'status-pending';
+    return 'status-progress';
   }
 
   /** Call this from your background API to update Inspector agent status */
@@ -580,16 +598,9 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
 
   /** CSS class for Inspector agent status */
   getInspectorAgentStatusClass(): string {
-    switch (this.inspectorAgentStatus) {
-      case 'Completed':
-        return 'status-done';
-      case 'Finalizing your compliance summary…':
-        return 'status-progress';
-      case 'Waiting':
-        return 'status-pending';
-      default:
-        return 'status-pending';
-    }
+    if (this.inspectorAgentStatus === 'Completed') return 'status-done';
+    if (this.inspectorAgentStatus === 'Waiting') return 'status-pending';
+    return 'status-progress';
   }
 
   /** True only when all four agents have completed their work */
@@ -819,9 +830,10 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     };
     this.firstSowRequestSent = true;
 
-    this.applicationsApi.sendSowMessage(payload).subscribe({
+    this.applicationsApi.sendSowMessage(payload).pipe(
+      finalize(() => (this.sowLoading = false)),
+    ).subscribe({
       next: (res: SowResponse) => {
-        this.sowLoading = false;
         this.sowQuestionId = '1'; // next request will be user's answer to question 1
 
         if (res.next_question) {
@@ -845,7 +857,6 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
       },
       error: (err) => {
         console.error('SOW fetch first question error:', err);
-        this.sowLoading = false;
         this.firstSowRequestSent = false;
         this.sowError = 'Unable to load the first question. Please try again.';
         this.aiCompanionMessages.push({
@@ -864,6 +875,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     this.aiCompanionInput = '';
     this.sowLoading = true;
     this.sowError = '';
+    setTimeout(() => this.scrollChatToBottom(), 80);
 
     // Every SOW request: { application_id, question_id, response }. First time: question_id empty, response empty;
     // after that question_id = next_question_id from previous response (1, 2, 3, …), response = user text.
@@ -874,9 +886,10 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     };
     if (!this.firstSowRequestSent) this.firstSowRequestSent = true;
 
-    this.applicationsApi.sendSowMessage(payload).subscribe({
+    this.applicationsApi.sendSowMessage(payload).pipe(
+      finalize(() => (this.sowLoading = false)),
+    ).subscribe({
       next: (res: SowResponse) => {
-        this.sowLoading = false;
         const sentQuestionNum = this.sowQuestionId === '' ? 1 : parseInt(this.sowQuestionId, 10) || 1;
         // Use sequential question_id for next payload: "" → "2", "2" → "3", "3" → "4", etc. (ignore API next_question_id)
         const nextNum = sentQuestionNum + 1;
@@ -904,7 +917,6 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
       },
       error: (err) => {
         console.error('SOW AI companion error:', err);
-        this.sowLoading = false;
         this.sowError = 'AI companion is unavailable. Please try again.';
         this.aiCompanionMessages.push({
           role: 'bot',

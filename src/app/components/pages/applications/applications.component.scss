@@ -276,6 +276,34 @@
   gap: 0.75rem;
 }
 
+// Loader shown while waiting for chatbot response
+.ai-companion-typing {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chat-loader-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: chat-spin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+
+.chat-loader-text {
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+@keyframes chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .ai-message {
   padding: 0.65rem 1rem;
   border-radius: 12px;
@@ -839,6 +867,126 @@
   margin: 0 0 0.5rem;
   font-size: 0.85rem;
   color: #64748b;
+}
+
+// Stream-driven timeline (SSE events: each agent start/done as a row)
+.stream-timeline {
+  margin-bottom: 1rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.stream-timeline-track {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.stream-timeline-item {
+  flex-shrink: 0;
+}
+
+.stream-timeline-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+
+  &.stream-timeline-card--working {
+    border-left: 3px solid #3b82f6;
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.06) 0%, transparent 12%);
+  }
+
+  &.stream-timeline-card--completed {
+    border-left: 3px solid #22c55e;
+    background: linear-gradient(90deg, rgba(34, 197, 94, 0.04) 0%, transparent 12%);
+  }
+}
+
+.stream-timeline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.stream-timeline-agent-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1e293b;
+}
+
+.stream-timeline-time {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.stream-timeline-message {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.stream-timeline-status {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+
+  &.status-progress {
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
+
+  &.status-done {
+    background: #dcfce7;
+    color: #15803d;
+  }
+}
+
+.stream-timeline-finding {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.85rem;
+
+  strong {
+    color: #1e293b;
+  }
+}
+
+.stream-timeline-severity {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+
+  &.severity-critical {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+
+  &.severity-warning {
+    background: #fef3c7;
+    color: #b45309;
+  }
+
+  &.severity-violation {
+    background: #fce7f3;
+    color: #be185d;
+  }
+}
+
+.stream-timeline-detail {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+  line-height: 1.4;
 }
 
 .timeline {
