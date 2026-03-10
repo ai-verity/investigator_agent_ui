@@ -64,8 +64,8 @@
                     <dd>{{ record.applicant }}</dd>
                   </div>
                   <div class="record-field">
-                    <dt>Address:</dt>
-                    <dd>{{ record.address }}</dd>
+                    <dt>Permit Type:</dt>
+                    <dd>{{ capitalizePermitType(record.permitType) }}</dd>
                   </div>
                   <div class="record-field">
                     <dt>Zoning Type:</dt>
@@ -80,10 +80,6 @@
                   <div class="record-field">
                     <dt>Officer Decision:</dt>
                     <dd><span class="status" [ngClass]="getStatusClass(record.status)">{{ getOfficerDecisionDisplay(record) }}</span></dd>
-                  </div>
-                  <div class="record-field">
-                    <dt>Permit Type:</dt>
-                    <dd>{{ capitalizePermitType(record.permitType) }}</dd>
                   </div>
                   <div class="record-field">
                     <dt>Submitted Date:</dt>
@@ -123,13 +119,37 @@
                   >Feedback <span class="feedback-info-badge" aria-hidden="true">i</span></button>
                 </div>
 
-                <div class="ai-summary-box">
-                  <div class="ai-summary-heading">AI Summary:</div>
-                  <ul class="ai-summary-list">
-                    @for (issue of detectedIssues(); track issue) {
-                      <li>{{ issue }}</li>
+                <div class="ai-findings-box">
+                  <div class="ai-findings-heading">AI Summary</div>
+                  @if (adminFindingsLoading) {
+                    <p class="ai-findings-loading">Loading AI Summary...</p>
+                  } @else if (adminFindingsError) {
+                    <p class="error-text ai-findings-error">{{ adminFindingsError }}</p>
+                  } @else {
+                    <div class="ai-findings-table-wrap">
+                      <table class="ai-findings-table">
+                        <thead>
+                          <tr>
+                            <th>AI Suggestions</th>
+                            <th>Severity</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (finding of adminFindings; track finding.agent + finding.findings) {
+                            <tr>
+                              <td>{{ finding.aiSuggestion }}</td>
+                              <td>
+                                <span class="finding-status" [ngClass]="getFindingStatusClass(finding.status)">{{ finding.status }}</span>
+                              </td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                    @if (adminFindings.length === 0 && !adminFindingsLoading) {
+                      <p class="ai-findings-empty">No AI findings for this application.</p>
                     }
-                  </ul>
+                  }
                 </div>
 
                 <div class="ai-analysis-nav">

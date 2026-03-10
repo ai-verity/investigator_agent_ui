@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
-import { ApplicationsApiService, ApplicationListItem } from '../../../services/applications-api.service';
+import { ApplicationsApiService, ApplicationListItem, ReviewStreamFinding } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 
 export interface Permit {
@@ -101,6 +101,11 @@ export class DashboardComponent implements OnInit {
       'No issues detected for this permit.',
     ];
   });
+
+  /** AI findings from GET /review/{app_id}/results for the selected record (admin). */
+  adminFindings: { agent: string; findings: string; aiSuggestion: string; status: string }[] = [];
+  adminFindingsLoading = false;
+  adminFindingsError = '';
   feedbackTooltip = 'This feedback will be used for finetuning our Agents.';
   feedbackModalOpen = signal<boolean>(false);
   feedbackText = '';
@@ -163,6 +168,7 @@ export class DashboardComponent implements OnInit {
         this.adminRecords = (items || []).map((it) => this.mapListItemToAdminRecord(it));
         if (this.adminRecords.length > 0) {
           this.selectedRecord.set(this.adminRecords[0]);
+          this.loadAdminFindings(this.adminRecords[0].permitId);
         }
       },
       error: (err) => {
@@ -318,7 +324,14 @@ export class DashboardComponent implements OnInit {
     const filtered = this.filteredAdminRecords;
     const current = this.selectedRecord();
     if (current && !filtered.some((r) => r.permitId === current.permitId)) {
-      this.selectedRecord.set(filtered.length > 0 ? filtered[0] : null);
+      if (filtered.length > 0) {
+        this.selectedRecord.set(filtered[0]);
+        this.loadAdminFindings(filtered[0].permitId);
+      } else {
+        this.selectedRecord.set(null);
+        this.adminFindings = [];
+        this.adminFindingsError = '';
+      }
     }
   }
 
@@ -391,6 +404,7 @@ export class DashboardComponent implements OnInit {
   selectRecord(record: AdminRecord): void {
     if (!record) return;
     this.selectedRecord.set({ ...record });
+    this.loadAdminFindings(record.permitId);
     this.activeDetailContent.set(-1);
     this.decisionConfirmed.set(false);
     this.decisionConfirmedChoice.set(null);
@@ -403,6 +417,47 @@ export class DashboardComponent implements OnInit {
 
   getRecordForPermitId(permitId: string): AdminRecord | undefined {
     return this.adminRecords.find(r => r.permitId === permitId);
+  }
+
+  /** Load AI findings from GET /review/{app_id}/results for the selected record (admin detail). */
+  loadAdminFindings(permitId: string): void {
+    this.adminFindingsLoading = true;
+    this.adminFindingsError = '';
+    this.adminFindings = [];
+    this.applicationsApi.getReviewResults(permitId).subscribe({
+      next: (res) => {
+        this.adminFindingsLoading = false;
+        const raw = res.findings ?? res.all_findings ?? [];
+        this.adminFindings = raw.map((f: ReviewStreamFinding) => this.mapFindingToDisplay(f));
+      },
+      error: (err) => {
+        this.adminFindingsLoading = false;
+        this.adminFindingsError = err?.message ?? 'Failed to load AI findings.';
+      },
+    });
+  }
+
+  private mapFindingToDisplay(f: ReviewStreamFinding): { agent: string; findings: string; aiSuggestion: string; status: string } {
+    const severity = (f.severity ?? '').toLowerCase();
+    let status = 'Follow-up';
+    if (severity === 'critical') status = 'Critical';
+    else if (severity === 'warning') status = 'Warning';
+    else if (severity === 'violation') status = 'Violation';
+    return {
+      agent: f.agent ?? '—',
+      findings: f.finding ?? '',
+      aiSuggestion: f.detail ?? '',
+      status,
+    };
+  }
+
+  getAgentDisplayName(agent: string): string {
+    if (agent === 'Code') return 'Code Enforcement Agent';
+    return agent;
+  }
+
+  getFindingStatusClass(status: string): string {
+    return 'status-' + status.toLowerCase().replace(/\s+/g, '-');
   }
 
   selectPermitAsUser(permit: Permit): void {
