@@ -19,6 +19,16 @@
   font-size: 1rem;
 }
 
+.findings-loading {
+  margin: 1rem 0;
+  color: #64748b;
+  font-size: 0.95rem;
+}
+
+.findings-error {
+  margin: 1rem 0;
+}
+
 .view-form {
   .form-row {
     display: flex;

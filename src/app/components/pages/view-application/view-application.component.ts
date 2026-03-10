@@ -1,7 +1,7 @@
 import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { ApplicationsApiService, ApplicationDetail } from '../../../services/applications-api.service';
+import { ApplicationsApiService, ApplicationDetail, ReviewStreamFinding } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 
 /** Record data for view application page – all values from API, no hardcoding. */
@@ -57,6 +57,8 @@ export class ViewApplicationComponent implements OnInit {
     { agent: 'Planner', findings: 'Impervious 44.2%', aiSuggestion: 'Impervious 48%', status: 'Warning' },
     { agent: 'Inspector', findings: 'Unpermitted Shed', aiSuggestion: 'NA', status: 'Follow-up' },
   ];
+  complianceFindingsLoading = false;
+  complianceFindingsError = '';
 
   constructor(
     private router: Router,
@@ -139,17 +141,52 @@ export class ViewApplicationComponent implements OnInit {
   goToStep(step: number): void {
     if (step >= 1 && step <= this.totalSteps) {
       this.currentStep = step;
+      if (step === 5 && this.record) this.loadFindings();
     }
   }
 
   goToNextStep(): void {
     if (this.currentStep < this.totalSteps) {
       this.currentStep++;
+      if (this.currentStep === 5 && this.record) this.loadFindings();
     }
   }
 
   returnToDashboard(): void {
     this.router.navigate(['/dashboard']);
+  }
+
+  /** Load findings from GET /review/{app_id}/results when step 5 is shown. */
+  loadFindings(): void {
+    const appId = this.record?.permitId;
+    if (!appId) return;
+    this.complianceFindingsLoading = true;
+    this.complianceFindingsError = '';
+    this.applicationsApi.getReviewResults(appId).subscribe({
+      next: (res) => {
+        this.complianceFindingsLoading = false;
+        const raw = res.findings ?? res.all_findings ?? [];
+        this.complianceFindings = raw.map((f: ReviewStreamFinding) => this.mapFindingToDisplay(f));
+      },
+      error: (err) => {
+        this.complianceFindingsLoading = false;
+        this.complianceFindingsError = err?.message ?? 'Failed to load findings.';
+      },
+    });
+  }
+
+  private mapFindingToDisplay(f: ReviewStreamFinding): { agent: string; findings: string; aiSuggestion: string; status: string } {
+    const severity = (f.severity ?? '').toLowerCase();
+    let status = 'Follow-up';
+    if (severity === 'critical') status = 'Critical';
+    else if (severity === 'warning') status = 'Warning';
+    else if (severity === 'violation') status = 'Violation';
+    return {
+      agent: f.agent ?? '—',
+      findings: f.finding ?? '',
+      aiSuggestion: f.detail ?? '',
+      status,
+    };
   }
 
   getFindingStatusClass(status: string): string {

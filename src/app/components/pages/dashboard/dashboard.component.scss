@@ -15,6 +15,17 @@
       color: #64748b;
       font-size: 0.95rem;
     }
+
+    .list-section {
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .table-wrap {
+      max-height: none;
+      overflow-y: visible;
+      overflow: visible;
+    }
   }
 }
 

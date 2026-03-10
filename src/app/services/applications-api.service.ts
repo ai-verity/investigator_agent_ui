@@ -96,6 +96,12 @@ export interface ReviewStreamEvent {
   compliance_score?: number | null;
 }
 
+/** Response from GET /review/{app_id}/results – findings for an application. */
+export interface ReviewResultsResponse {
+  findings?: ReviewStreamFinding[];
+  all_findings?: ReviewStreamFinding[];
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -212,6 +218,18 @@ export class ApplicationsApiService {
         })
         .catch((err) => subscriber.error(err));
     });
+  }
+
+  /**
+   * GET /review/{app_id}/results – Get findings for an application.
+   */
+  getReviewResults(appId: string | number): Observable<ReviewResultsResponse> {
+    const base = environment.reviewStreamBaseUrl || '';
+    const token = this.auth.getToken() || (environment as { reviewStreamAuthToken?: string }).reviewStreamAuthToken || '';
+    const url = `${base}/review/${appId}/results`;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return this.http.get<ReviewResultsResponse>(url, { headers });
   }
 }
 

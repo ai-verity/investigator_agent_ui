@@ -177,6 +177,13 @@
       <h3 class="summary-title">AI Compliance Summary</h3>
       <p class="summary-text">Review the AI-generated compliance findings below.</p>
     </div>
+    @if (complianceFindingsLoading) {
+      <p class="findings-loading">Loading findings…</p>
+    }
+    @if (complianceFindingsError) {
+      <p class="error-text findings-error">{{ complianceFindingsError }}</p>
+    }
+    @if (!complianceFindingsLoading && !complianceFindingsError) {
     <div class="findings-section">
       <table class="findings-table">
         <thead>
@@ -201,6 +208,7 @@
         </tbody>
       </table>
     </div>
+    }
     <div class="form-actions">
       <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
       <button type="button" class="btn-primary" (click)="goToNextStep()">Next</button>
@@ -213,7 +221,7 @@
     <section class="screen6-section">
       <h3 class="screen6-section-title">Application Status</h3>
       <dl class="screen6-details">
-        <dt>Permit ID:</dt>
+        <dt>Application ID:</dt>
         <dd>{{ record.permitId }}</dd>
         <dt>Application Type:</dt>
         <dd>{{ record.permitType ?? '—' }}</dd>

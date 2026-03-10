@@ -552,6 +552,17 @@
     color: #fff;
     border-color: transparent;
   }
+
+  &.stepper-step-locked {
+    cursor: not-allowed;
+    opacity: 0.6;
+    pointer-events: none;
+
+    &:hover {
+      background: transparent;
+      color: #64748b;
+    }
+  }
 }
 
 .stepper-number {
@@ -1226,7 +1237,41 @@
   border-top: 1px solid #eee;
 }
 
-// Step 6: Application Submitted Successfully – centered only in New Application (see view-application for left-aligned override)
+.submit-tooltip-wrap {
+  position: relative;
+  display: inline-block;
+
+  .submit-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-6px);
+    padding: 0.5rem 0.75rem;
+    background: #1e293b;
+    color: #fff;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    border-radius: 6px;
+    white-space: nowrap;
+    max-width: 280px;
+    white-space: normal;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.05s ease-out, visibility 0.05s ease-out, transform 0.05s ease-out;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  &:hover .submit-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(-6px);
+  }
+}
+
+// Step 6: Application Submitted Successfully
 .step6-permit-approved {
   background: #fff;
   border: 1px solid #e5e7eb;

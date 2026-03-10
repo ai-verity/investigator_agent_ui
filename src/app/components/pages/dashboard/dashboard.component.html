@@ -14,8 +14,41 @@
               <span class="spinner" aria-hidden="true"></span>
             </div>
           }
+          @if (!adminRecordsLoading && adminRecords.length > 0) {
+            <div class="filters-section">
+              <div class="filters-row">
+                <div class="filter-group">
+                  <label class="filter-label" for="adminZoningFilter">Zoning Type</label>
+                  <select
+                    id="adminZoningFilter"
+                    class="filter-select"
+                    [ngModel]="adminZoningFilter"
+                    (ngModelChange)="onAdminZoningFilterChange($event)"
+                  >
+                    @for (opt of adminZoningFilterOptions; track opt.value) {
+                      <option [value]="opt.value">{{ opt.label }}</option>
+                    }
+                  </select>
+                </div>
+                <span class="filter-divider" aria-hidden="true"></span>
+                <div class="filter-group">
+                  <label class="filter-label" for="adminPermitTypeFilter">Permit Type</label>
+                  <select
+                    id="adminPermitTypeFilter"
+                    class="filter-select"
+                    [ngModel]="adminPermitTypeFilter"
+                    (ngModelChange)="onAdminPermitTypeFilterChange($event)"
+                  >
+                    @for (opt of adminPermitTypeFilterOptions; track opt.value) {
+                      <option [value]="opt.value">{{ opt.label }}</option>
+                    }
+                  </select>
+                </div>
+              </div>
+            </div>
+          }
           <div class="records-list">
-            @for (record of adminRecords; track record.permitId) {
+            @for (record of filteredAdminRecords; track record.permitId) {
               <div
                 class="record-card"
                 [class.selected]="selectedRecord()?.permitId === record.permitId"
@@ -36,7 +69,7 @@
                   </div>
                   <div class="record-field">
                     <dt>Zoning Type:</dt>
-                    <dd>{{ record.zoningType }}</dd>
+                    <dd>{{ capitalizeZoningType(record.zoningType) }}</dd>
                   </div>
                 </div>
                 <div class="record-right">
@@ -50,7 +83,7 @@
                   </div>
                   <div class="record-field">
                     <dt>Permit Type:</dt>
-                    <dd>{{ record.permitType }}</dd>
+                    <dd>{{ capitalizePermitType(record.permitType) }}</dd>
                   </div>
                   <div class="record-field">
                     <dt>Submitted Date:</dt>
@@ -62,10 +95,13 @@
             @if (!adminRecordsLoading && adminRecords.length === 0) {
               <p class="no-records">No applications found.</p>
             }
+            @if (!adminRecordsLoading && adminRecords.length > 0 && filteredAdminRecords.length === 0) {
+              <p class="no-records">No applications match the selected filters.</p>
+            }
           </div>
         </div>
-      </div>
 
+      </div>
       <div class="right-panel">
         <div class="detail-section">
           @if (selectedRecord(); as record) {

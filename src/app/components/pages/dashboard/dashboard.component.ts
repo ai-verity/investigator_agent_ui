@@ -55,6 +55,10 @@ export class DashboardComponent implements OnInit {
   adminRecords: AdminRecord[] = [];
   adminRecordsLoading = false;
   adminRecordsError = '';
+  /** Zoning type filter for admin list; empty = All */
+  adminZoningFilter = '';
+  /** Permit type filter for admin list; empty = All */
+  adminPermitTypeFilter = '';
 
   selectedRecord = signal<AdminRecord | null>(null);
   otherDetailButtons = [
@@ -197,8 +201,20 @@ export class DashboardComponent implements OnInit {
     this.userPermitsLoading = true;
     this.userPermitsError = '';
     this.applicationsApi.listApplications().subscribe({
-      next: (items: ApplicationListItem[]) => {
+      next: (response: ApplicationListItem[] | Record<string, unknown>) => {
         this.userPermitsLoading = false;
+        let items: ApplicationListItem[] = Array.isArray(response) ? response : [];
+        if (!items.length && response && typeof response === 'object' && !Array.isArray(response)) {
+          const obj = response as Record<string, unknown>;
+          if (Array.isArray(obj.data)) items = obj.data as ApplicationListItem[];
+          else if (Array.isArray(obj.applications)) items = obj.applications as ApplicationListItem[];
+          else {
+            const values = Object.values(obj);
+            if (values.length > 0 && values.every((v) => v && typeof v === 'object' && ('application_id' in v || 'app_id' in v || 'permit_id' in v))) {
+              items = values as ApplicationListItem[];
+            }
+          }
+        }
         const toStr = (v: unknown) => (v === undefined || v === null ? '' : String(v));
         this.permits = (items || []).map((it) => ({
           permitId: toStr(it.permit_id ?? it.application_id ?? it.app_id) || '—',
@@ -223,6 +239,87 @@ export class DashboardComponent implements OnInit {
 
   get isAdmin(): boolean {
     return this.auth.currentRole === 'admin';
+  }
+
+  /** Fixed zoning type options for admin filter; first letter (of each word) capitalized in display. */
+  private static readonly ZONING_OPTIONS = ['Residential', 'Commercial', 'Industrial', 'Mixed-Use', 'Civic/Public'] as const;
+
+  /** Fixed permit type options for admin filter. */
+  private static readonly PERMIT_TYPE_OPTIONS = ['New Construction', 'Remodel/ Alteration', 'Demolition'] as const;
+
+  /** Zoning filter dropdown: All + fixed options. */
+  get adminZoningFilterOptions(): { value: string; label: string }[] {
+    return [
+      { value: '', label: 'All' },
+      ...DashboardComponent.ZONING_OPTIONS.map((v) => ({ value: v, label: v })),
+    ];
+  }
+
+  /** Permit type filter dropdown: All + fixed options. */
+  get adminPermitTypeFilterOptions(): { value: string; label: string }[] {
+    return [
+      { value: '', label: 'All' },
+      ...DashboardComponent.PERMIT_TYPE_OPTIONS.map((v) => ({ value: v, label: v })),
+    ];
+  }
+
+  /** Admin list filtered by zoning and permit type (case-insensitive match). */
+  get filteredAdminRecords(): AdminRecord[] {
+    let list = this.adminRecords;
+    const z = this.adminZoningFilter.trim();
+    if (z) {
+      const lower = z.toLowerCase();
+      list = list.filter((r) => (r.zoningType ?? '').trim().toLowerCase() === lower);
+    }
+    const p = this.adminPermitTypeFilter.trim();
+    if (p) {
+      const normFilter = this.normalizeForPermitFilter(p);
+      list = list.filter((r) => this.normalizeForPermitFilter(r.permitType ?? '') === normFilter);
+    }
+    return list;
+  }
+
+  /** Normalize for permit type filter match: lowercase, trim, collapse spaces around slash. */
+  private normalizeForPermitFilter(s: string): string {
+    return (s ?? '').trim().toLowerCase().replace(/\s*\/\s*/g, '/');
+  }
+
+  /** Capitalize first letter of each word (e.g. "mixed-use" -> "Mixed-Use", "civic/public" -> "Civic/Public"). */
+  capitalizeZoningType(value: string | undefined): string {
+    if (value === undefined || value === null) return '—';
+    const s = value.trim();
+    if (!s) return '—';
+    const lower = s.toLowerCase();
+    return lower.replace(/(^|[\s/-])(\w)/g, (_, sep, c) => sep + c.toUpperCase());
+  }
+
+  /** Capitalize first letter of each word for permit type display. */
+  capitalizePermitType(value: string | undefined): string {
+    if (value === undefined || value === null) return '—';
+    const s = value.trim();
+    if (!s) return '—';
+    const lower = s.toLowerCase();
+    return lower.replace(/(^|[\s/-])(\w)/g, (_, sep, c) => sep + c.toUpperCase());
+  }
+
+  /** When zoning filter changes, keep selection in sync: if selected record is not in filtered list, select first filtered or null. */
+  onAdminZoningFilterChange(value: string): void {
+    this.adminZoningFilter = value;
+    this.syncSelectionToFilteredList();
+  }
+
+  /** When permit type filter changes, keep selection in sync. */
+  onAdminPermitTypeFilterChange(value: string): void {
+    this.adminPermitTypeFilter = value;
+    this.syncSelectionToFilteredList();
+  }
+
+  private syncSelectionToFilteredList(): void {
+    const filtered = this.filteredAdminRecords;
+    const current = this.selectedRecord();
+    if (current && !filtered.some((r) => r.permitId === current.permitId)) {
+      this.selectedRecord.set(filtered.length > 0 ? filtered[0] : null);
+    }
   }
 
   /**

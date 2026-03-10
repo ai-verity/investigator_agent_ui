@@ -54,6 +54,8 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
   currentStep = 1;
   totalSteps = 6;
   steps = [1, 2, 3, 4, 5, 6];
+  /** Highest step the user has reached by completing previous steps; prevents jumping to Step 4+ without data. */
+  maxStepReached = 1;
   /** Unique application ID (UUID) created when user opens New Application – used across all steps */
   applicationId: string;
   applicationStarted = false;
@@ -330,12 +332,14 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
       this.step1Form.markAllAsTouched();
       if (this.step1Form.valid) {
         this.currentStep = 2; // applicationId already set on load; /applications/start is called at Step 2
+        this.maxStepReached = Math.max(this.maxStepReached, 2);
       }
     } else if (this.currentStep === 2) {
       this.step2Form.markAllAsTouched();
       if (!this.step2Form.valid) return;
       if (this.applicationStarted) {
         this.currentStep = 3;
+        this.maxStepReached = Math.max(this.maxStepReached, 3);
         return;
       }
       const step1 = this.step1Form.getRawValue();
@@ -359,6 +363,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
           this.startApplicationLoading = false;
           this.startApplicationError = '';
           this.currentStep = 3;
+          this.maxStepReached = Math.max(this.maxStepReached, 3);
         },
         error: (err) => {
           console.error('Start application failed:', err);
@@ -394,6 +399,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
             this.photosUploadLoading = false;
             this.reviewStreamError = '';
             this.currentStep = 4; // Move to Step 4 first, then start streaming
+            this.maxStepReached = Math.max(this.maxStepReached, 4);
             this.startReviewStream(); // Keeps running until stream ends; statuses update from events, then all set to Completed on complete
           },
           error: (err) => {
@@ -616,11 +622,12 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
   continueToPreComplianceReport(): void {
     if (this.currentStep === 4 && this.canContinueToPreComplianceReport) {
       this.currentStep = 5;
+      this.maxStepReached = Math.max(this.maxStepReached, 5);
     }
   }
 
   goToStep(step: number): void {
-    if (step >= 1 && step <= this.totalSteps) {
+    if (step >= 1 && step <= this.totalSteps && step <= this.maxStepReached) {
       this.currentStep = step;
     }
   }
@@ -747,6 +754,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     const year = new Date().getFullYear();
     const num = Math.floor(1000 + Math.random() * 9000);
     this.submissionPermitId = `BLR-${year}-${num}`;
+    this.maxStepReached = Math.max(this.maxStepReached, 6);
     this.goToStep(6);
   }
 

@@ -10,6 +10,9 @@
           class="stepper-step"
           [class.active]="currentStep === step"
           [class.completed]="currentStep > step"
+          [class.stepper-step-locked]="step > maxStepReached"
+          [attr.aria-disabled]="step > maxStepReached"
+          [disabled]="step > maxStepReached"
           (click)="goToStep(step)"
         >
           <span class="stepper-number">{{ step }}</span>
@@ -480,7 +483,18 @@
 
       <div class="step4-actions">
         <button type="button" class="btn-secondary" (click)="editApplication()">Edit Application</button>
-        <button type="button" class="btn-primary" (click)="submitForReview()" [disabled]="hasCriticalSeverity" [attr.aria-label]="hasCriticalSeverity ? 'Submit disabled: resolve Critical severity findings first' : 'Submit for Review'">Submit for Review</button>
+        <div class="submit-tooltip-wrap">
+          @if (hasCriticalSeverity) {
+            <span class="submit-tooltip">Please resolve the highlighted critical issues to enable submission.</span>
+          }
+          <button
+            type="button"
+            class="btn-primary"
+            (click)="submitForReview()"
+            [disabled]="hasCriticalSeverity"
+            [attr.aria-label]="hasCriticalSeverity ? 'Submit disabled: resolve Critical severity findings first' : 'Submit for Review'"
+          >Submit for Review</button>
+        </div>
       </div>
     </div>
   }
@@ -490,7 +504,7 @@
     <div class="step6-permit-approved">
       <h3 class="step6-success-title">Application Submitted Successfully</h3>
       <dl class="step6-submission-details">
-        <dt>Permit ID:</dt><dd>{{ submissionPermitId }}</dd>
+        <dt>Application ID:</dt><dd>{{ applicationId }}</dd>
       </dl>
       <div class="screen6-actions">
         <button type="button" class="btn-primary" (click)="downloadCopy()">Download Copy</button>
