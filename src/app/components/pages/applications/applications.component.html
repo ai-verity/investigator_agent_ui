@@ -399,26 +399,26 @@
                 </div>
                 @if (event.agentKey === 'intake' && event.subtitle) {
                   <p class="timeline-agent-subtitle">{{ event.subtitle }}</p>
-                  @if (event.description) {
-                    <p class="timeline-agent-description">{{ event.description }}</p>
+                  @if (event.detail) {
+                    <p class="timeline-agent-description">{{ event.detail }}</p>
                   }
                   <span class="timeline-status" [ngClass]="getIntakeAgentStatusClass()">{{ intakeAgentStatus }}</span>
                 } @else if (event.agentKey === 'code' && event.subtitle) {
                   <p class="timeline-agent-subtitle">{{ event.subtitle }}</p>
-                  @if (event.description) {
-                    <p class="timeline-agent-description">{{ event.description }}</p>
+                  @if (event.detail) {
+                    <p class="timeline-agent-description">{{ event.detail }}</p>
                   }
                   <span class="timeline-status" [ngClass]="getCodeAgentStatusClass()">{{ codeAgentStatus }}</span>
                 } @else if (event.agentKey === 'planner' && event.subtitle) {
                   <p class="timeline-agent-subtitle">{{ event.subtitle }}</p>
-                  @if (event.description) {
-                    <p class="timeline-agent-description">{{ event.description }}</p>
+                  @if (event.detail) {
+                    <p class="timeline-agent-description">{{ event.detail }}</p>
                   }
                   <span class="timeline-status" [ngClass]="getPlannerAgentStatusClass()">{{ plannerAgentStatus }}</span>
                 } @else if (event.agentKey === 'inspector' && event.subtitle) {
                   <p class="timeline-agent-subtitle">{{ event.subtitle }}</p>
-                  @if (event.description) {
-                    <p class="timeline-agent-description">{{ event.description }}</p>
+                  @if (event.detail) {
+                    <p class="timeline-agent-description">{{ event.detail }}</p>
                   }
                   <span class="timeline-status" [ngClass]="getInspectorAgentStatusClass()">{{ inspectorAgentStatus }}</span>
                 } @else {

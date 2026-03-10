@@ -41,6 +41,8 @@ export interface AgentActivityEvent {
   subtitle?: string;
   /** Optional fixed description for paced copy */
   description?: string;
+  /** Optional detailed text populated from stream finding.detail */
+  detail?: string;
 }
 
 @Component({
@@ -499,6 +501,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
 
   /** Map SSE event to the 4 agents only. Agent name stays fixed; status shows sub-task (e.g. "Blueprint Analysis") or message, then "Completed". Handles event_type "complete". */
   private applyReviewStreamEvent(event: ReviewStreamEvent): void {
+    console.log("Stream event review=====>", event)
     const isComplete = event.event_type === 'complete';
     const isStart = event.event_type === 'agent_start';
     const isDone = event.event_type === 'agent_done';
@@ -543,6 +546,16 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
       else if (agentKey === 'planner') this.setPlannerAgentStatus('Completed');
       else if (agentKey === 'inspector') this.setInspectorAgentStatus('Completed');
       this.updateAgentEventTime(agentKey);
+      // Use finding.detail for the timeline card, appending if the same agent emits multiple findings
+      if (event.finding?.detail) {
+        const detail = event.finding.detail.trim();
+        this.agentActivityEvents = this.agentActivityEvents.map((e) => {
+          if (e.agentKey !== agentKey) return e;
+          const prev = (e.detail ?? '').trim();
+          const next = prev ? `${prev}\n\n${detail}` : detail;
+          return { ...e, detail: next };
+        });
+      }
     }
 
     if (isDone && event.finding) {

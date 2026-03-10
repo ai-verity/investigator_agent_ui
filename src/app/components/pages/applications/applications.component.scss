@@ -1246,14 +1246,13 @@
     bottom: 100%;
     left: 50%;
     transform: translateX(-50%) translateY(-6px);
+    width: 280px;
     padding: 0.5rem 0.75rem;
     background: #1e293b;
     color: #fff;
     font-size: 0.85rem;
     line-height: 1.35;
     border-radius: 6px;
-    white-space: nowrap;
-    max-width: 280px;
     white-space: normal;
     text-align: center;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
