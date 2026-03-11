@@ -366,6 +366,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
           this.startApplicationError = '';
           this.currentStep = 3;
           this.maxStepReached = Math.max(this.maxStepReached, 3);
+          this.applicationsApi.updateApplicationStatus(this.applicationId, 'pending').subscribe({ error: () => {} });
         },
         error: (err) => {
           console.error('Start application failed:', err);
@@ -402,6 +403,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
             this.reviewStreamError = '';
             this.currentStep = 4; // Move to Step 4 first, then start streaming
             this.maxStepReached = Math.max(this.maxStepReached, 4);
+            this.applicationsApi.updateApplicationStatus(this.applicationId, 'submitted').subscribe({ error: () => {} });
             this.startReviewStream(); // Keeps running until stream ends; statuses update from events, then all set to Completed on complete
           },
           error: (err) => {
@@ -768,6 +770,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     const num = Math.floor(1000 + Math.random() * 9000);
     this.submissionPermitId = `BLR-${year}-${num}`;
     this.maxStepReached = Math.max(this.maxStepReached, 6);
+    this.applicationsApi.updateApplicationStatus(this.applicationId, 'completed').subscribe({ error: () => {} });
     this.goToStep(6);
   }
 

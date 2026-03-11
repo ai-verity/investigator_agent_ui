@@ -176,10 +176,11 @@ export class DashboardComponent implements OnInit {
           }
         }
         this.adminRecords = (items || []).map((it) => this.mapListItemToAdminRecord(it));
-        if (this.adminRecords.length > 0) {
-          this.selectedRecord.set(this.adminRecords[0]);
-          this.loadAdminFindings(this.adminRecords[0].permitId);
-          this.loadAdminReviewImages(this.adminRecords[0].permitId);
+        const filtered = this.filteredAdminRecords;
+        if (filtered.length > 0) {
+          this.selectedRecord.set(filtered[0]);
+          this.loadAdminFindings(filtered[0].permitId);
+          this.loadAdminReviewImages(filtered[0].permitId);
         }
       },
       error: (err) => {
@@ -280,9 +281,19 @@ export class DashboardComponent implements OnInit {
     ];
   }
 
-  /** Admin list filtered by zoning and permit type (case-insensitive match). */
+  /** Admin list filtered by zoning and permit type. Hide only pending; show submitted, completed, and all officer decisions (approved, rejected, requested revision). */
   get filteredAdminRecords(): AdminRecord[] {
     let list = this.adminRecords;
+    const statusLower = (s: string | undefined) => (s ?? '').trim().toLowerCase();
+    list = list.filter((r) => {
+      const s = statusLower(r.status);
+      if (s === 'pending') return false;
+      if (s === 'submitted' || s === 'completed') return true;
+      if (s === 'approved' || s === 'approve') return true;
+      if (s === 'rejected' || s === 'reject') return true;
+      if (s === 'requested revision' || s === 'requested for revision' || s === 'revision') return true;
+      return true;
+    });
     const z = this.adminZoningFilter.trim();
     if (z) {
       const lower = z.toLowerCase();
@@ -351,24 +362,28 @@ export class DashboardComponent implements OnInit {
 
   /**
    * Map Officer Decision (status) to AI Decision per the rules:
-   * NA → Critical Violation; Approved → Compliant; Under Review → Compliant;
-   * Requested for Revision / Rejected → Non Compliant.
+   * For applications the user was able to submit (submitted/completed), default is Compliant.
+   * NA → Critical Violation; Approved / Under Review → Compliant; Requested Revision / Rejected → Non Compliant.
    */
   getAiDecisionLabel(officerStatus: string | undefined): string {
-    if (officerStatus === undefined || officerStatus === null) return 'Critical Violation';
+    if (officerStatus === undefined || officerStatus === null) return 'Compliant';
     const s = officerStatus.trim().toLowerCase();
-    if (s === '' || s === 'na' || s === 'pending') return 'Critical Violation';
+    if (s === '' || s === 'pending' || s === 'review pending') return 'Compliant';
+    if (s === 'submitted' || s === 'completed') return 'Compliant';
+    if (s === 'na') return 'Critical Violation';
     if (s === 'approved' || s === 'approve') return 'Compliant';
     if (s === 'under review') return 'Compliant';
     if (s === 'requested for revision' || s === 'requested revision' || s === 'revision') return 'Non Compliant';
     if (s === 'rejected' || s === 'reject') return 'Non Compliant';
-    if (s === 'complete') return 'Compliant'; // treat complete as compliant for display
-    return 'Critical Violation';
+    if (s === 'complete') return 'Compliant';
+    return 'Compliant';
   }
 
-  /** When AI Decision is Critical Violation, show Officer Decision as "Not Applicable". */
+  /** Officer Decision: show "Review Pending" when no decision yet (submitted/completed/empty); otherwise show the officer's decision. */
   getOfficerDecisionDisplay(record: { status?: string }): string {
     if (this.getAiDecisionLabel(record?.status) === 'Critical Violation') return 'Not Applicable';
+    const s = (record?.status ?? '').trim().toLowerCase();
+    if (s === '' || s === 'pending' || s === 'review pending' || s === 'submitted' || s === 'completed') return 'Review Pending';
     return (record?.status ?? '').trim() || '—';
   }
 
@@ -473,7 +488,13 @@ export class DashboardComponent implements OnInit {
       },
       error: (err) => {
         this.adminFindingsLoading = false;
-        this.adminFindingsError = err?.message ?? 'Failed to load AI findings.';
+        const status = err?.status ?? err?.error?.status;
+        if (status === 404) {
+          this.adminFindings = [];
+          this.adminFindingsError = '';
+        } else {
+          this.adminFindingsError = err?.message ?? 'Failed to load AI findings.';
+        }
       },
     });
   }

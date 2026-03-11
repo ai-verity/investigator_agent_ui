@@ -79,7 +79,7 @@
                   </div>
                   <div class="record-field">
                     <dt>Officer Decision:</dt>
-                    <dd><span class="status" [ngClass]="getStatusClass(record.status)">{{ getOfficerDecisionDisplay(record) }}</span></dd>
+                    <dd><span class="status" [ngClass]="getStatusClass(getOfficerDecisionDisplay(record))">{{ getOfficerDecisionDisplay(record) }}</span></dd>
                   </div>
                   <div class="record-field">
                     <dt>Submitted Date:</dt>

@@ -185,7 +185,7 @@ export class ViewApplicationComponent implements OnInit {
   goToStep(step: number): void {
     if (step >= 1 && step <= this.totalSteps && this.steps.includes(step)) {
       this.currentStep = step;
-      if (step === 5 && this.record) this.loadFindings();
+      if (this.record && (step === 5 || step === 6)) this.loadFindings();
     }
   }
 
@@ -332,7 +332,13 @@ export class ViewApplicationComponent implements OnInit {
       },
       error: (err) => {
         this.complianceFindingsLoading = false;
-        this.complianceFindingsError = err?.message ?? 'Failed to load findings.';
+        const status = err?.status ?? err?.error?.status;
+        if (status === 404) {
+          this.complianceFindings = [];
+          this.complianceFindingsError = '';
+        } else {
+          this.complianceFindingsError = err?.message ?? 'Failed to load findings.';
+        }
       },
     });
   }
@@ -353,6 +359,11 @@ export class ViewApplicationComponent implements OnInit {
 
   getFindingStatusClass(status: string): string {
     return 'status-' + status.toLowerCase().replace(/\s+/g, '-');
+  }
+
+  /** True when at least one finding has Critical severity (from findings endpoint). Hides PDF download in step 6. */
+  get hasCriticalSeverity(): boolean {
+    return this.complianceFindings.some((f) => (f.status ?? '').toLowerCase() === 'critical');
   }
 
   getAgentDisplayName(agent: string): string {

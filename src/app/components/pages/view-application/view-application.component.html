@@ -250,8 +250,9 @@
       </dl>
     </section>
     <div class="screen6-actions">
-      <button type="button" class="btn-primary" (click)="downloadApprovalPdf()" [disabled]="!isOfficerApproved"
-        [attr.aria-label]="isOfficerApproved ? 'Download approval PDF' : 'Download available when application is approved by Officer'">
+      <button type="button" class="btn-primary" (click)="downloadApprovalPdf()"
+        [disabled]="!isOfficerApproved || hasCriticalSeverity || complianceFindingsLoading"
+        [attr.aria-label]="isOfficerApproved && !hasCriticalSeverity ? 'Download approval PDF' : (hasCriticalSeverity ? 'Download disabled: application has Critical severity findings' : 'Download available when application is approved by Officer')">
         Download Approval (PDF)
       </button>
       <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>

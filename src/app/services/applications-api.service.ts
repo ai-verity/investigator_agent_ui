@@ -252,7 +252,27 @@ export class ApplicationsApiService {
   }
 
   /**
-   * POST /applications/{app_id}/inspector-feedback – Submit inspector/officer decision.
+   * GET /applications/{app_id}/application-status – Fetch current application status (pending | submitted | completed).
+   */
+  getApplicationStatus(appId: string | number): Observable<string> {
+    const base = environment.applicationsBaseUrl || '';
+    return this.http.get<string>(`${base}/applications/${appId}/application-status`);
+  }
+
+  /**
+   * PATCH /applications/{app_id}/application-status – Update application status.
+   * Use when user reaches milestones: pending (after start), submitted (after step 3), completed (after step 6).
+   */
+  updateApplicationStatus(
+    appId: string | number,
+    status: 'pending' | 'submitted' | 'completed',
+  ): Observable<unknown> {
+    const base = environment.applicationsBaseUrl || '';
+    const url = `${base}/applications/${appId}/application-status`;
+    return this.http.patch(url, { status }, { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  /**
    * Payload should be sent in lowercase (e.g. decision, comment).
    */
   submitInspectorFeedback(appId: string | number, body: { decision: string; comment?: string }): Observable<unknown> {
