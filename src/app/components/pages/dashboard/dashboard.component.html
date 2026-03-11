@@ -280,7 +280,17 @@
                       ></textarea>
                     </div>
                   }
-                  <button type="button" class="decision-confirm-btn" [disabled]="!decisionChoice() || isDecisionSectionDisabled" (click)="confirmDecision()">Confirm Decision</button>
+                  @if (decisionConfirmError) {
+                    <p class="error-text decision-confirm-error">{{ decisionConfirmError }}</p>
+                  }
+                  <button
+                    type="button"
+                    class="decision-confirm-btn"
+                    [disabled]="!decisionChoice() || isDecisionSectionDisabled || decisionConfirmLoading"
+                    (click)="confirmDecision()"
+                  >
+                    {{ decisionConfirmLoading ? 'Submitting…' : 'Confirm Decision' }}
+                  </button>
                 </div>
                 }
               </div>
@@ -401,8 +411,18 @@
             placeholder="Enter your feedback..."
             rows="5"
           ></textarea>
+          @if (feedbackError) {
+            <p class="error-text">{{ feedbackError }}</p>
+          }
           <div class="feedback-modal-actions">
-            <button type="button" class="feedback-btn feedback-btn-submit" (click)="submitFeedback()">Submit Feedback</button>
+            <button
+              type="button"
+              class="feedback-btn feedback-btn-submit"
+              (click)="submitFeedback()"
+              [disabled]="feedbackSubmitting || !feedbackText.trim()"
+            >
+              {{ feedbackSubmitting ? 'Submitting…' : 'Submit Feedback' }}
+            </button>
           </div>
         </div>
       </div>

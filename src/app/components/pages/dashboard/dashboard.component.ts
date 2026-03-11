@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { ApplicationsApiService, ApplicationListItem, ReviewStreamFinding } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
+import { environment } from '../../../../environments/environment';
 
 export interface Permit {
   permitId: string;
@@ -106,9 +107,16 @@ export class DashboardComponent implements OnInit {
   adminFindings: { agent: string; findings: string; aiSuggestion: string; status: string }[] = [];
   adminFindingsLoading = false;
   adminFindingsError = '';
+
+  /** Image URLs from GET /review/{app_id}/images for selected record (admin). */
+  adminReviewImagesLoading = false;
+  adminBlueprintImageUrl: string | null = null;
+  adminPhotoUrls: string[] = [];
   feedbackTooltip = 'This feedback will be used for finetuning our Agents.';
   feedbackModalOpen = signal<boolean>(false);
   feedbackText = '';
+  feedbackSubmitting = false;
+  feedbackError = '';
   officerComments = '';
   decisionChoice = signal<'approve' | 'reject' | 'revision' | null>(null);
   decisionComment = '';
@@ -119,6 +127,8 @@ export class DashboardComponent implements OnInit {
   decisionConfirmedAt = signal<Date | null>(null);
   /** Stored officer comment when confirming Request Revision (shown in REVISION DETAILS) */
   decisionRevisionComment = signal<string>('');
+  decisionConfirmLoading = false;
+  decisionConfirmError = '';
 
   siteImagesEnlarged = signal<number | null>(null); // 1-based index of image shown enlarged, null = none
 
@@ -169,6 +179,7 @@ export class DashboardComponent implements OnInit {
         if (this.adminRecords.length > 0) {
           this.selectedRecord.set(this.adminRecords[0]);
           this.loadAdminFindings(this.adminRecords[0].permitId);
+          this.loadAdminReviewImages(this.adminRecords[0].permitId);
         }
       },
       error: (err) => {
@@ -327,10 +338,13 @@ export class DashboardComponent implements OnInit {
       if (filtered.length > 0) {
         this.selectedRecord.set(filtered[0]);
         this.loadAdminFindings(filtered[0].permitId);
+        this.loadAdminReviewImages(filtered[0].permitId);
       } else {
         this.selectedRecord.set(null);
         this.adminFindings = [];
         this.adminFindingsError = '';
+        this.adminBlueprintImageUrl = null;
+        this.adminPhotoUrls = [];
       }
     }
   }
@@ -375,8 +389,33 @@ export class DashboardComponent implements OnInit {
     return `${datePart}, ${timePart}`;
   }
 
-  /** Blueprint image from assets/images/blueprint for selected record (admin). */
+  /** Load image URLs from GET /review/{app_id}/images for selected record (admin). */
+  loadAdminReviewImages(permitId: string): void {
+    this.adminReviewImagesLoading = true;
+    this.adminBlueprintImageUrl = null;
+    this.adminPhotoUrls = [];
+    const base = (environment as { reviewStreamBaseUrl?: string }).reviewStreamBaseUrl || '';
+    this.applicationsApi.getReviewImages(permitId).subscribe({
+      next: (res) => {
+        this.adminReviewImagesLoading = false;
+        const paths = res.images || [];
+        const blueprintPath = paths.find((p) => p.includes('blueprint'));
+        if (blueprintPath) {
+          this.adminBlueprintImageUrl = blueprintPath.startsWith('http') ? blueprintPath : `${base.replace(/\/$/, '')}/${blueprintPath.replace(/^\//, '')}`;
+        }
+        this.adminPhotoUrls = paths
+          .filter((p) => p.includes('photos'))
+          .map((p) => (p.startsWith('http') ? p : `${base.replace(/\/$/, '')}/${p.replace(/^\//, '')}`));
+      },
+      error: () => {
+        this.adminReviewImagesLoading = false;
+      },
+    });
+  }
+
+  /** Blueprint image from GET /review/{app_id}/images when available, else assets fallback (admin). */
   getBlueprintImageUrl(): string {
+    if (this.adminBlueprintImageUrl) return this.adminBlueprintImageUrl;
     const record = this.selectedRecord();
     if (!record) return 'assets/images/blueprint/old_permit_modified 1.jpg';
     const name = record.blueprintFileName?.trim();
@@ -384,8 +423,9 @@ export class DashboardComponent implements OnInit {
     return 'assets/images/blueprint/old_permit_modified 1.jpg';
   }
 
-  /** Site image URLs from assets/images/site-images for selected record (admin). */
+  /** Site image URLs from GET /review/{app_id}/images when available, else assets fallback (admin). */
   getSiteImageUrls(): string[] {
+    if (this.adminPhotoUrls.length > 0) return this.adminPhotoUrls;
     const files = ['front_view.png', 'back_view.png'];
     const record = this.selectedRecord();
     const count = record?.siteImagesCount;
@@ -405,6 +445,7 @@ export class DashboardComponent implements OnInit {
     if (!record) return;
     this.selectedRecord.set({ ...record });
     this.loadAdminFindings(record.permitId);
+    this.loadAdminReviewImages(record.permitId);
     this.activeDetailContent.set(-1);
     this.decisionConfirmed.set(false);
     this.decisionConfirmedChoice.set(null);
@@ -485,23 +526,32 @@ export class DashboardComponent implements OnInit {
 
   confirmDecision(): void {
     const choice = this.decisionChoice();
-    if (choice) {
-      console.log('Decision confirmed:', choice, this.decisionComment || '');
-      this.decisionConfirmed.set(true);
-      this.decisionConfirmedChoice.set(choice);
-      this.decisionConfirmedAt.set(new Date());
-      if (choice === 'revision' || choice === 'reject') {
-        this.decisionRevisionComment.set(this.decisionComment || '');
-      }
-      // Update selected record status so list and AI Decision reflect officer decision
-      const record = this.selectedRecord();
-      if (record) {
+    const record = this.selectedRecord();
+    if (!choice || !record?.permitId) return;
+
+    this.decisionConfirmError = '';
+    this.decisionConfirmLoading = true;
+    const comment = choice === 'revision' || choice === 'reject' ? this.decisionComment || '' : '';
+
+    this.applicationsApi.submitInspectorFeedback(record.permitId, { decision: choice, comment }).subscribe({
+      next: () => {
+        this.decisionConfirmLoading = false;
+        this.decisionConfirmed.set(true);
+        this.decisionConfirmedChoice.set(choice);
+        this.decisionConfirmedAt.set(new Date());
+        if (choice === 'revision' || choice === 'reject') {
+          this.decisionRevisionComment.set(this.decisionComment || '');
+        }
         const statusMap = { approve: 'Approved', reject: 'Rejected', revision: 'Requested Revision' } as const;
         record.status = statusMap[choice];
         const idx = this.adminRecords.findIndex((r) => r.permitId === record.permitId);
         if (idx !== -1) this.adminRecords[idx] = { ...this.adminRecords[idx], status: record.status };
-      }
-    }
+      },
+      error: (err) => {
+        this.decisionConfirmLoading = false;
+        this.decisionConfirmError = err?.message ?? 'Failed to submit decision.';
+      },
+    });
   }
 
   getDecisionConfirmedTimestamp(): string {
@@ -596,12 +646,28 @@ export class DashboardComponent implements OnInit {
   closeFeedbackModal(): void {
     this.feedbackModalOpen.set(false);
     this.feedbackText = '';
+    this.feedbackSubmitting = false;
+    this.feedbackError = '';
   }
 
   submitFeedback(): void {
-    // Placeholder: send feedback to API for finetuning
-    console.log('Feedback submitted:', this.feedbackText);
-    this.closeFeedbackModal();
+    const text = (this.feedbackText || '').trim();
+    const record = this.selectedRecord();
+    if (!record?.permitId || !text) {
+      return;
+    }
+    this.feedbackSubmitting = true;
+    this.feedbackError = '';
+    this.applicationsApi.updateFeedback(record.permitId, text).subscribe({
+      next: () => {
+        this.feedbackSubmitting = false;
+        this.closeFeedbackModal();
+      },
+      error: (err) => {
+        this.feedbackSubmitting = false;
+        this.feedbackError = err?.message ?? 'Failed to submit feedback.';
+      },
+    });
   }
 
   getStatusClass(status: string): string {

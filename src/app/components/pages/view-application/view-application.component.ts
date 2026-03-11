@@ -1,11 +1,14 @@
 import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import { jsPDF } from 'jspdf';
 import { ApplicationsApiService, ApplicationDetail, ReviewStreamFinding } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
+import { environment } from '../../../../environments/environment';
 
 /** Record data for view application page – all values from API, no hardcoding. */
 export interface ViewApplicationRecord {
+  feedback?: string;
   permitId: string;
   applicantType?: string;
   applicant: string;
@@ -26,6 +29,7 @@ export interface ViewApplicationRecord {
   signatureFileName?: string;
   blueprintFileName?: string;
   siteImagesCount?: number | string;
+  inspector_status?: string;
 }
 
 @Component({
@@ -38,7 +42,8 @@ export interface ViewApplicationRecord {
 export class ViewApplicationComponent implements OnInit {
   currentStep = 1;
   totalSteps = 6;
-  steps = [1, 2, 3, 4, 5, 6];
+  /** Step 4 (AI Agents at Work) skipped for user view – only 5 steps shown. */
+  steps = [1, 2, 3, 5, 6];
 
   record: ViewApplicationRecord | null = null;
   viewLoading = false;
@@ -60,6 +65,11 @@ export class ViewApplicationComponent implements OnInit {
   complianceFindingsLoading = false;
   complianceFindingsError = '';
 
+  /** Image URLs from GET /review/{app_id}/images (full URLs for blueprint and photos). */
+  reviewImagesLoading = false;
+  blueprintImageUrl: string | null = null;
+  photoUrls: string[] = [];
+
   constructor(
     private router: Router,
     private applicationsApi: ApplicationsApiService,
@@ -78,6 +88,7 @@ export class ViewApplicationComponent implements OnInit {
         next: (item: ApplicationDetail) => {
           this.viewLoading = false;
           this.record = this.mapDetailToRecord(item);
+          this.loadReviewImages();
         },
         error: () => {
           this.viewLoading = false;
@@ -88,7 +99,38 @@ export class ViewApplicationComponent implements OnInit {
     }
     if (state?.record) {
       this.record = state.record;
+      this.loadReviewImages();
     }
+  }
+
+  /** Load blueprint and photo URLs from GET /review/{app_id}/images. */
+  loadReviewImages(): void {
+    const appId = this.record?.permitId;
+    if (!appId) {
+      this.blueprintImageUrl = null;
+      this.photoUrls = [];
+      return;
+    }
+    this.reviewImagesLoading = true;
+    this.blueprintImageUrl = null;
+    this.photoUrls = [];
+    const base = (environment as { reviewStreamBaseUrl?: string }).reviewStreamBaseUrl || '';
+    this.applicationsApi.getReviewImages(appId).subscribe({
+      next: (res) => {
+        this.reviewImagesLoading = false;
+        const paths = res.images || [];
+        const blueprintPath = paths.find((p) => p.includes('blueprint'));
+        if (blueprintPath) {
+          this.blueprintImageUrl = blueprintPath.startsWith('http') ? blueprintPath : `${base.replace(/\/$/, '')}/${blueprintPath.replace(/^\//, '')}`;
+        }
+        this.photoUrls = paths
+          .filter((p) => p.includes('photos'))
+          .map((p) => (p.startsWith('http') ? p : `${base.replace(/\/$/, '')}/${p.replace(/^\//, '')}`));
+      },
+      error: () => {
+        this.reviewImagesLoading = false;
+      },
+    });
   }
 
   private mapDetailToRecord(item: ApplicationDetail): ViewApplicationRecord {
@@ -103,6 +145,7 @@ export class ViewApplicationComponent implements OnInit {
     };
     const opt = (v: unknown) => (v === undefined || v === null || toStr(v) === '' ? undefined : toStr(v));
     return {
+      feedback: opt(item.feedback),
       permitId: toStr(item.application_id ?? item.permit_id) || '',
       applicantType: opt(item.applicant_type),
       applicant: toStr(item.owner_name ?? item.full_name) || '',
@@ -123,6 +166,7 @@ export class ViewApplicationComponent implements OnInit {
       signatureFileName: opt(item.signature_file_name),
       blueprintFileName: opt(item.blueprint_file_name),
       siteImagesCount: toNum(item.site_images_count),
+      inspector_status: opt(item.inspector_status),
     };
   }
 
@@ -139,21 +183,139 @@ export class ViewApplicationComponent implements OnInit {
   }
 
   goToStep(step: number): void {
-    if (step >= 1 && step <= this.totalSteps) {
+    if (step >= 1 && step <= this.totalSteps && this.steps.includes(step)) {
       this.currentStep = step;
       if (step === 5 && this.record) this.loadFindings();
     }
   }
 
   goToNextStep(): void {
-    if (this.currentStep < this.totalSteps) {
+    if (this.currentStep === 3) {
+      this.currentStep = 5; // skip step 4 (AI Agents at Work)
+    } else if (this.currentStep < this.totalSteps) {
       this.currentStep++;
-      if (this.currentStep === 5 && this.record) this.loadFindings();
     }
+    if (this.currentStep === 5 && this.record) this.loadFindings();
   }
 
   returnToDashboard(): void {
     this.router.navigate(['/dashboard']);
+  }
+
+  /** True when the application has been approved by an inspector (inspector_status is approved). */
+  get isOfficerApproved(): boolean {
+    const s = (this.record?.inspector_status ?? '').trim().toLowerCase();
+    return s === 'approved' || s === 'approve';
+  }
+
+  /** Infer permit city for PDF template: 'newyork' if address suggests NYC, else 'austin'. */
+  getPermitCity(): 'austin' | 'newyork' {
+    const addr = (this.record?.address ?? '').toLowerCase();
+    if (/new york|newyork|nyc|brooklyn|manhattan|queens|bronx|staten island|, ny\b/.test(addr)) return 'newyork';
+    return 'austin';
+  }
+
+  /** Generate and download approval PDF (Austin or New York template) when officer has approved. */
+  downloadApprovalPdf(): void {
+    if (!this.record || !this.isOfficerApproved) return;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const city = this.getPermitCity();
+    const approvalDate = this.formatSubmissionDateForPdf(this.record.submittedDate);
+    const permitExpiry = this.formatDateForPdf(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
+
+    if (city === 'austin') {
+      doc.setFontSize(18);
+      doc.setTextColor(0, 51, 102);
+      doc.text('City of Austin – Building Permit Approval Certificate', 20, 22);
+      doc.setDrawColor(0, 51, 102);
+      doc.setLineWidth(0.5);
+      doc.line(20, 26, 190, 26);
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      const rows: [string, string][] = [
+        ['City', 'Austin, Texas'],
+        ['Department', 'Development Services Department'],
+        ['Permit Number', `ATX-BLD-2026-${(this.record.permitId || 'XXXX').slice(-4)}`],
+        ['Application ID', this.record.permitId || 'PA-XXXXXX'],
+        ['Approval Date', approvalDate],
+        ['Applicant Name', this.record.applicant || '[Applicant Name]'],
+        ['Property Owner', this.record.applicant || '[Owner Name]'],
+        ['Project Address', this.record.address || '[Street Address, Austin, TX ZIP]'],
+        ['Zoning Classification', this.record.zoningType || '[Residential / Commercial / Mixed Use]'],
+        ['Property ID', this.record.permitId || '[Parcel ID]'],
+        ['Approved Scope of Work', (this.record.scopeOfWork as string)?.slice(0, 80) || 'Construction of a residential/commercial structure per approved plans'],
+        ['Compliance Codes', 'Austin Land Development Code, IRC, IBC'],
+        ['Required Inspections', 'Foundation, Framing, Electrical, Plumbing, Final Inspection'],
+        ['Permit Expiration', permitExpiry],
+        ['Authorized Officer', '[City Permit Officer]'],
+      ];
+      this.addFieldDetailsTable(doc, rows, 30);
+      doc.setFontSize(9);
+      doc.text('This permit must be displayed at the construction site during the entire duration of work.', 20, 272);
+      doc.save(`Austin-Building-Permit-${this.record.permitId || 'approval'}.pdf`);
+    } else {
+      doc.setFontSize(18);
+      doc.setTextColor(0, 51, 102);
+      doc.text('City of New York – Construction Permit Approval Notice', 20, 22);
+      doc.setDrawColor(0, 51, 102);
+      doc.setLineWidth(0.5);
+      doc.line(20, 26, 190, 26);
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      const rows: [string, string][] = [
+        ['City', 'New York City'],
+        ['Department', 'Department of Buildings'],
+        ['Permit Number', `NYC-DOB-2026-${(this.record.permitId || 'XXXX').slice(-4)}`],
+        ['Application Number', this.record.permitId || 'BIS-XXXXXX'],
+        ['Approval Date', approvalDate],
+        ['Applicant / Contractor', this.record.applicant || '[Applicant Name]'],
+        ['Licensed Professional', '[Architect / Engineer Name]'],
+        ['Project Address', this.record.address || '[Street Address, Borough, NY ZIP]'],
+        ['Borough', '[Manhattan / Brooklyn / Queens / Bronx / Staten Island]'],
+        ['Block / Lot Number', (this.record.permitId || 'XXXXX').slice(0, 5)],
+        ['Approved Work Type', this.record.permitType || 'Construction / Alteration / Addition'],
+        ['Scope of Work', (this.record.scopeOfWork as string)?.slice(0, 60) || 'Construction as per approved architectural plans'],
+        ['Compliance Codes', 'NYC Building Code, NYC Zoning Resolution, Fire Code'],
+        ['Required Inspections', 'Structural, Electrical, Plumbing, Fire Safety, Final Inspection'],
+        ['Permit Validity', permitExpiry],
+        ['Authorized Officer', '[DOB Plan Examiner]'],
+      ];
+      this.addFieldDetailsTable(doc, rows, 30);
+      doc.setFontSize(9);
+      doc.text('This permit must be displayed at the construction site during the entire duration of work.', 20, 272);
+      doc.save(`NYC-Construction-Permit-${this.record.permitId || 'approval'}.pdf`);
+    }
+  }
+
+  private formatDateForPdf(d: Date): string {
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const y = d.getFullYear();
+    return `${m}/${day}/${y}`;
+  }
+
+  private formatSubmissionDateForPdf(value: string | undefined): string {
+    if (!value || !value.trim()) return this.formatDateForPdf(new Date());
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return this.formatDateForPdf(d);
+    return value;
+  }
+
+  private addFieldDetailsTable(doc: jsPDF, rows: [string, string][], startY: number): void {
+    const col1 = 20;
+    const col2 = 70;
+    const lineHeight = 7;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Field', col1, startY);
+    doc.text('Details', col2, startY);
+    doc.setFont('helvetica', 'normal');
+    let y = startY + lineHeight;
+    for (const [field, detail] of rows) {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.text(field, col1, y);
+      doc.text(detail.length > 50 ? detail.slice(0, 47) + '...' : detail, col2, y);
+      y += lineHeight;
+    }
   }
 
   /** Load findings from GET /review/{app_id}/results when step 5 is shown. */
@@ -208,16 +370,18 @@ export class ViewApplicationComponent implements OnInit {
     return map[agentKey] ?? 'assets/agents/Intake_Agent.png';
   }
 
-  /** Blueprint image from assets/images/blueprint. Uses record.blueprintFileName or default file. */
+  /** Blueprint image: from GET /review/{app_id}/images when available, else assets fallback. */
   getBlueprintImageUrl(): string {
+    if (this.blueprintImageUrl) return this.blueprintImageUrl;
     if (!this.record) return 'assets/images/blueprint/blueprint.png';
     const name = this.record.blueprintFileName?.trim();
     if (name) return `assets/images/blueprint/${name}`;
     return 'assets/images/blueprint/old_permit_modified 1.jpg';
   }
 
-  /** Site image URLs from assets/images/site-images. Uses known filenames, limited by siteImagesCount. */
+  /** Site image URLs: from GET /review/{app_id}/images when available, else assets fallback. */
   getSiteImageUrls(): string[] {
+    if (this.photoUrls.length > 0) return this.photoUrls;
     const files = ['front_view.png', 'back_view.png'];
     const count = this.record?.siteImagesCount;
     const n = typeof count === 'number' ? Math.min(Math.max(0, count), files.length) : files.length;

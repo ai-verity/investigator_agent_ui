@@ -19,10 +19,10 @@
       @for (step of steps; track step) {
       <button type="button" class="stepper-step" [class.active]="currentStep === step"
         [class.completed]="currentStep > step" (click)="goToStep(step)">
-        <span class="stepper-number">{{ step }}</span>
-        <span class="stepper-label">Step {{ step }}</span>
+        <span class="stepper-number">{{ $index + 1 }}</span>
+        <span class="stepper-label">Step {{ $index + 1 }}</span>
       </button>
-      @if (step < 6) { <span class="stepper-connector"></span>
+      @if ($index < steps.length - 1) { <span class="stepper-connector"></span>
         }
         }
     </div>
@@ -177,10 +177,10 @@
       <p class="summary-text">Review the AI-generated compliance findings below.</p>
     </div>
     @if (complianceFindingsLoading) {
-      <p class="findings-loading">Loading findings…</p>
+    <p class="findings-loading">Loading findings…</p>
     }
     @if (complianceFindingsError) {
-      <p class="error-text findings-error">{{ complianceFindingsError }}</p>
+    <p class="error-text findings-error">{{ complianceFindingsError }}</p>
     }
     @if (!complianceFindingsLoading && !complianceFindingsError) {
     <div class="findings-section">
@@ -243,8 +243,17 @@
         <dd>{{ record.noOfFloors ?? '—' }}</dd>
       </dl>
     </section>
+    <section class="screen6-section">
+      <dl class="screen6-details">
+        <dt>AI Feedback:</dt>
+        <dd>{{ record.feedback ?? '—' }}</dd>
+      </dl>
+    </section>
     <div class="screen6-actions">
-      <button type="button" class="btn-primary">Download Approved Permit (PDF)</button>
+      <button type="button" class="btn-primary" (click)="downloadApprovalPdf()" [disabled]="!isOfficerApproved"
+        [attr.aria-label]="isOfficerApproved ? 'Download approval PDF' : 'Download available when application is approved by Officer'">
+        Download Approval (PDF)
+      </button>
       <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
     </div>
   </div>

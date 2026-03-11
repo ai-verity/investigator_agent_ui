@@ -50,6 +50,8 @@ export interface ApplicationListItem {
 
 /** Response from POST /applications/{app_id} (view application). Map all fields from API. */
 export interface ApplicationDetail {
+  feedback?: string;
+  inspector_status?: string;
   application_id: string;
   date?: string;
   application_type?: string;
@@ -100,6 +102,11 @@ export interface ReviewStreamEvent {
 export interface ReviewResultsResponse {
   findings?: ReviewStreamFinding[];
   all_findings?: ReviewStreamFinding[];
+}
+
+/** Response from GET /review/{app_id}/images – image paths for blueprint and photos. */
+export interface ReviewImagesResponse {
+  images?: string[];
 }
 
 @Injectable({
@@ -230,6 +237,42 @@ export class ApplicationsApiService {
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
     return this.http.get<ReviewResultsResponse>(url, { headers });
+  }
+
+  /**
+   * GET /review/{app_id}/images – Get image paths for blueprint and photos (relative paths, e.g. uploads/.../blueprint/..., uploads/.../photos/...).
+   */
+  getReviewImages(appId: string | number): Observable<ReviewImagesResponse> {
+    const base = environment.reviewStreamBaseUrl || '';
+    const token = this.auth.getToken() || (environment as { reviewStreamAuthToken?: string }).reviewStreamAuthToken || '';
+    const url = `${base}/review/${appId}/images`;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return this.http.get<ReviewImagesResponse>(url, { headers });
+  }
+
+  /**
+   * POST /applications/{app_id}/inspector-feedback – Submit inspector/officer decision.
+   * Payload should be sent in lowercase (e.g. decision, comment).
+   */
+  submitInspectorFeedback(appId: string | number, body: { decision: string; comment?: string }): Observable<unknown> {
+    const base = environment.applicationsBaseUrl || '';
+    const url = `${base}/applications/${appId}/inspector-feedback`;
+    const payload = {
+      status: (body.decision || '').toLowerCase().trim(),
+      ...(body.comment != null && body.comment !== '' ? { comment: String(body.comment).toLowerCase().trim() } : {}),
+    };
+    return this.http.post(url, payload, { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  /**
+   * PATCH /applications/{app_id}/feedback – Update inspector feedback text.
+   */
+  updateFeedback(appId: string | number, feedback: string): Observable<unknown> {
+    const base = environment.applicationsBaseUrl || '';
+    const url = `${base}/applications/${appId}/feedback`;
+    const payload = { feedback: String(feedback ?? '').trim().toLowerCase() };
+    return this.http.patch(url, payload, { headers: { 'Content-Type': 'application/json' } });
   }
 }
 
