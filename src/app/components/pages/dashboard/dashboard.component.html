@@ -177,7 +177,7 @@
                   ></textarea>
                 </div>
 
-                @if ((decisionConfirmed() && decisionConfirmedChoice() === 'approve') || record.status === 'Approved') {
+                @if (decisionConfirmed() && decisionConfirmedChoice() === 'approve') {
                   <div class="decision-confirmation-summary">
                     <div class="decision-confirmation-header">DECISION CONFIRMED</div>
                     <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
@@ -190,10 +190,10 @@
                       <li>✓ SLA Closed</li>
                     </ul>
                   </div>
-                } @else if ((decisionConfirmed() && decisionConfirmedChoice() === 'revision') || record.status === 'Requested Revision') {
+                } @else if (decisionConfirmed() && decisionConfirmedChoice() === 'revision') {
                   <div class="decision-confirmation-summary">
                     <div class="decision-confirmation-header">DECISION CONFIRMED</div>
-                    <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                    <div class="decision-confirmation-line">Application ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
                     <div class="decision-confirmation-line">Decision: Revision Requested</div>
                     <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
                     <div class="revision-details-section">
@@ -208,24 +208,75 @@
                       <div class="revision-officer-notes">{{ decisionRevisionComment() || 'Please revise structural drawings to comply with 35 ft height limit and include additional fire exit.' }}</div>
                     </div>
                   </div>
-                } @else if ((decisionConfirmed() && decisionConfirmedChoice() === 'reject') || record.status === 'Rejected') {
+                } @else if (decisionConfirmed() && decisionConfirmedChoice() === 'reject') {
                   <div class="decision-confirmation-summary">
                     <div class="decision-confirmation-header">DECISION CONFIRMED</div>
-                    <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                    <div class="decision-confirmation-line">Application ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
                     <div class="decision-confirmation-line">Decision: Rejected</div>
                     <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
                     <div class="revision-details-section">
                       <div class="decision-confirmation-header revision-details-header">REJECTION SUMMARY</div>
-                      <div class="revision-details-sub">Primary Reasons:</div>
-                      <ul class="decision-confirmation-actions">
-                        @for (issue of detectedIssues(); track issue) {
-                          <li>✓ {{ issue }}</li>
+                      <div class="revision-details-sub">Critical AI findings:</div>
+                      <div class="rejection-critical-findings">
+                        @for (finding of criticalFindings; track finding.agent + finding.findings) {
+                          <div class="rejection-finding-item">✓ {{ getAgentDisplayName(finding.agent) }}: {{ finding.findings }}</div>
                         }
-                      </ul>
+                        @if (criticalFindings.length === 0) {
+                          <div class="rejection-finding-item">No critical findings from AI.</div>
+                        }
+                      </div>
                       <div class="revision-details-sub">Officer Notes:</div>
                       <div class="revision-officer-notes">{{ decisionRevisionComment() || 'Application does not comply with floodplain development standards under LDC Section 25-7' }}</div>
                     </div>
                   </div>
+                } @else if (hasOfficerDecided(record)) {
+                  @if (getOfficerDecisionType(record) === 'approve') {
+                    <div class="decision-confirmation-summary">
+                      <div class="decision-confirmation-header">DECISION CONFIRMED</div>
+                      <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                      <div class="decision-confirmation-line">Decision: Approved</div>
+                      <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
+                      <ul class="decision-confirmation-actions">
+                        <li>✓ Digital Certificate Generated</li>
+                        <li>✓ Applicant Notified</li>
+                        <li>✓ Audit Log Recorded</li>
+                        <li>✓ SLA Closed</li>
+                      </ul>
+                    </div>
+                  } @else if (getOfficerDecisionType(record) === 'revision') {
+                    <div class="decision-confirmation-summary">
+                      <div class="decision-confirmation-header">DECISION CONFIRMED</div>
+                      <div class="decision-confirmation-line">Application ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                      <div class="decision-confirmation-line">Decision: Revision Requested</div>
+                      <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
+                      <div class="revision-details-section">
+                        <div class="decision-confirmation-header revision-details-header">REVISION DETAILS</div>
+                        <div class="revision-details-sub">Officer Notes:</div>
+                        <div class="revision-officer-notes">{{ record.officer_comment?.trim() || '—' }}</div>
+                      </div>
+                    </div>
+                  } @else if (getOfficerDecisionType(record) === 'reject') {
+                    <div class="decision-confirmation-summary">
+                      <div class="decision-confirmation-header">DECISION CONFIRMED</div>
+                      <div class="decision-confirmation-line">Application ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                      <div class="decision-confirmation-line">Decision: Rejected</div>
+                      <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
+                      <div class="revision-details-section">
+                        <div class="decision-confirmation-header revision-details-header">REJECTION SUMMARY</div>
+                        <div class="revision-details-sub">Critical AI findings:</div>
+                        <div class="rejection-critical-findings">
+                          @for (finding of criticalFindings; track finding.agent + finding.findings) {
+                            <div class="rejection-finding-item">✓ {{ getAgentDisplayName(finding.agent) }}: {{ finding.findings }}</div>
+                          }
+                          @if (criticalFindings.length === 0) {
+                            <div class="rejection-finding-item">No critical findings from AI.</div>
+                          }
+                        </div>
+                        <div class="revision-details-sub">Officer Notes:</div>
+                        <div class="revision-officer-notes">{{ record.officer_comment?.trim() || '—' }}</div>
+                      </div>
+                    </div>
+                  }
                 } @else {
                 <div class="decision-section" [class.decision-section-disabled]="isDecisionSectionDisabled">
                   @if (isDecisionSectionDisabled) {
@@ -445,7 +496,7 @@
             <table class="permits-table">
               <thead>
                 <tr>
-                  <th>Permit ID</th>
+                  <th>Application ID</th>
                   <th>Address</th>
                   <th>Permit Type</th>
                   <th>Application Status</th>
@@ -459,7 +510,7 @@
                     <td>{{ permit.type }}</td>
                     <td>
                       <span class="status" [ngClass]="getStatusClass(permit.status)">
-                        {{ permit.status }}
+                        {{ formatApplicationStatus(permit.status) }}
                       </span>
                     </td>
                   </tr>

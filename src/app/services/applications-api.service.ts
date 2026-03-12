@@ -4,6 +4,14 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AuthService } from './auth.service';
 
+/** Returns a user-friendly error message; never exposes raw "Http failure response for..." or technical details. */
+export function getUserFriendlyErrorMessage(err: unknown, fallback: string): string {
+  const msg = (err as { message?: string })?.message ?? '';
+  if (!msg || msg.trim() === '') return fallback;
+  if (msg.startsWith('Http failure response') || /Unknown Error|Failed to fetch|NetworkError|NS_/i.test(msg)) return fallback;
+  return msg;
+}
+
 export interface StartApplicationRequest {
   application_id: string;
   date: string; // ISO string
@@ -39,6 +47,9 @@ export interface ApplicationListItem {
   zoningType?: string;
   status?: string;
   application_status?: string;
+  officer_decision?: string;
+  officer_comment?: string;
+  officer_decided_at?: string;
   owner_name?: string;
   date?: string;
   submitted_date?: string;
@@ -52,6 +63,7 @@ export interface ApplicationListItem {
 export interface ApplicationDetail {
   feedback?: string;
   inspector_status?: string;
+  officer_decision?: string;
   application_id: string;
   date?: string;
   application_type?: string;
@@ -274,15 +286,35 @@ export class ApplicationsApiService {
 
   /**
    * Payload should be sent in lowercase (e.g. decision, comment).
+   * For submit-feedback-only flows, pass { comment: string }; decision defaults to 'feedback'.
    */
-  submitInspectorFeedback(appId: string | number, body: { decision: string; comment?: string }): Observable<unknown> {
+  submitInspectorFeedback(appId: string | number, body: { comment: string; decision?: string }): Observable<unknown> {
     const base = environment.applicationsBaseUrl || '';
     const url = `${base}/applications/${appId}/inspector-feedback`;
+    const decision = (body.decision ?? 'feedback').toLowerCase().trim();
     const payload = {
-      status: (body.decision || '').toLowerCase().trim(),
+      status: decision,
       ...(body.comment != null && body.comment !== '' ? { comment: String(body.comment).toLowerCase().trim() } : {}),
     };
     return this.http.post(url, payload, { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  /**
+   * POST /applications/{app_id}/inspector-status – Submit officer decision.
+   * Payload: officer_decision, officer_comment, permit_id (string | null), officer_decided_at (ISO string).
+   */
+  submitOfficerDecision(
+    appId: string | number,
+    body: {
+      officer_decision: string;
+      officer_comment: string | null;
+      permit_id: string | null;
+      officer_decided_at: string;
+    },
+  ): Observable<unknown> {
+    const base = environment.applicationsBaseUrl || '';
+    const url = `${base}/applications/${appId}/inspector-status`;
+    return this.http.post(url, body, { headers: { 'Content-Type': 'application/json' } });
   }
 
   /**

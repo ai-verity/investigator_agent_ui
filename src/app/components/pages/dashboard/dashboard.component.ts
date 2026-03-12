@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
-import { ApplicationsApiService, ApplicationListItem, ReviewStreamFinding } from '../../../services/applications-api.service';
+import { ApplicationsApiService, ApplicationListItem, ReviewStreamFinding, getUserFriendlyErrorMessage } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 import { environment } from '../../../../environments/environment';
 
@@ -16,10 +16,18 @@ export interface Permit {
 }
 
 export interface AdminRecord {
+  /** Display ID (may be "—" when missing). */
   permitId: string;
+  /** Real application id for API calls (review, inspector). Omit when missing so we never call APIs with "—". */
+  applicationId?: string;
   applicant: string;
   address: string;
   status: string;
+  /** Officer decision from API (approve, reject, revision, etc.). When empty, Officer Decision column shows "Review Pending". */
+  officerDecision?: string;
+  officer_comment?: string;
+  /** ISO date-time when officer made the decision (from API). Shown as "Decision confirmed at" timestamp. */
+  officerDecidedAt?: string;
   daysElapsed: number;
   permitType: string;
   zoningType: string;
@@ -179,31 +187,39 @@ export class DashboardComponent implements OnInit {
         const filtered = this.filteredAdminRecords;
         if (filtered.length > 0) {
           this.selectedRecord.set(filtered[0]);
-          this.loadAdminFindings(filtered[0].permitId);
-          this.loadAdminReviewImages(filtered[0].permitId);
+          const appId = filtered[0].applicationId;
+          if (appId) {
+            this.loadAdminFindings(appId);
+            this.loadAdminReviewImages(appId);
+          }
         }
       },
       error: (err) => {
         console.error('Admin list applications failed:', err);
         this.adminRecordsLoading = false;
-        const statusVal = err?.status;
-        const status =
-          statusVal === 0 || typeof statusVal === 'number'
-            ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
-            : '';
-        this.adminRecordsError = `Failed to load applications${status}`;
+        this.adminRecordsError = getUserFriendlyErrorMessage(err, 'Unable to load applications. Please try again.');
       },
     });
   }
 
   private mapListItemToAdminRecord(it: ApplicationListItem): AdminRecord {
     const toStr = (v: unknown) => (v === undefined || v === null ? '' : String(v));
-    const permitId = toStr(it.permit_id ?? it.application_id ?? it.app_id) || '—';
+    const rawId = it.application_id ?? it.app_id ?? it.permit_id;
+    const applicationId = rawId != null && String(rawId).trim() !== '' ? String(rawId).trim() : undefined;
+    const permitId = applicationId ?? '—';
+    const officerDecision = toStr(it.officer_decision).trim();
+    const workflow = toStr(it.status ?? it.application_status).trim();
+    const combinedStatus = officerDecision || workflow || '—';
+    const officerDecidedAt = it.officer_decided_at ? String(it.officer_decided_at).trim() : undefined;
     return {
       permitId,
+      applicationId,
       applicant: toStr(it.owner_name) || '—',
       address: toStr(it.project_address ?? it.address) || '—',
-      status: toStr(it.status ?? it.application_status) || '—',
+      status: combinedStatus,
+      officerDecision: officerDecision || undefined,
+      officer_comment: it.officer_comment ? toStr(it.officer_comment) : undefined,
+      officerDecidedAt: officerDecidedAt || undefined,
       daysElapsed: 0,
       permitType: toStr(it.application_type ?? it.permit_type) || '—',
       zoningType: toStr(it.zoning_type ?? it.zoningType) || '—',
@@ -234,23 +250,23 @@ export class DashboardComponent implements OnInit {
           }
         }
         const toStr = (v: unknown) => (v === undefined || v === null ? '' : String(v));
-        this.permits = (items || []).map((it) => ({
-          permitId: toStr(it.permit_id ?? it.application_id ?? it.app_id) || '—',
-          address: toStr(it.project_address ?? it.address) || '—',
-          type: toStr(it.application_type ?? it.permit_type) || '—',
-          zoningType: toStr(it.zoning_type ?? it.zoningType) || '—',
-          status: toStr(it.status ?? it.application_status) || '—',
-        }));
+        this.permits = (items || []).map((it) => {
+          // For user list, treat application_id as the primary Application ID.
+          const rawId = it.application_id ?? it.app_id ?? it.permit_id;
+          const applicationId = toStr(rawId) || '—';
+          return {
+            permitId: applicationId,
+            address: toStr(it.project_address ?? it.address) || '—',
+            type: toStr(it.application_type ?? it.permit_type) || '—',
+            zoningType: toStr(it.zoning_type ?? it.zoningType) || '—',
+            status: toStr(it.officer_decision ?? it.status ?? it.application_status) || '—',
+          };
+        });
       },
       error: (err) => {
         console.error('List applications failed:', err);
         this.userPermitsLoading = false;
-        const statusVal = err?.status;
-        const status =
-          statusVal === 0 || typeof statusVal === 'number'
-            ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
-            : '';
-        this.userPermitsError = `Failed to load applications${status}`;
+        this.userPermitsError = getUserFriendlyErrorMessage(err, 'Unable to load applications. Please try again.');
       },
     });
   }
@@ -348,8 +364,11 @@ export class DashboardComponent implements OnInit {
     if (current && !filtered.some((r) => r.permitId === current.permitId)) {
       if (filtered.length > 0) {
         this.selectedRecord.set(filtered[0]);
-        this.loadAdminFindings(filtered[0].permitId);
-        this.loadAdminReviewImages(filtered[0].permitId);
+        const appId = filtered[0].applicationId;
+        if (appId) {
+          this.loadAdminFindings(appId);
+          this.loadAdminReviewImages(appId);
+        }
       } else {
         this.selectedRecord.set(null);
         this.adminFindings = [];
@@ -379,18 +398,50 @@ export class DashboardComponent implements OnInit {
     return 'Compliant';
   }
 
-  /** Officer Decision: show "Review Pending" when no decision yet (submitted/completed/empty); otherwise show the officer's decision. */
-  getOfficerDecisionDisplay(record: { status?: string }): string {
+  /** Officer Decision column: show "Review Pending" when officer_decision is empty; otherwise show the officer's decision (capitalized). */
+  getOfficerDecisionDisplay(record: { status?: string; officerDecision?: string }): string {
     if (this.getAiDecisionLabel(record?.status) === 'Critical Violation') return 'Not Applicable';
-    const s = (record?.status ?? '').trim().toLowerCase();
-    if (s === '' || s === 'pending' || s === 'review pending' || s === 'submitted' || s === 'completed') return 'Review Pending';
-    return (record?.status ?? '').trim() || '—';
+    const raw = (record?.officerDecision ?? '').trim();
+    if (!raw) return 'Review Pending';
+    return this.capitalizeOfficerDecision(raw);
+  }
+
+  /** Capitalize first letter of Officer Decision for display (e.g. reject -> Reject, request revision -> Request Revision). */
+  private capitalizeOfficerDecision(value: string): string {
+    const v = value.trim();
+    if (!v) return v;
+    const lower = v.toLowerCase();
+    if (lower === 'request revision') return 'Request Revision';
+    if (lower === 'requested revision') return 'Requested Revision';
+    if (lower === 'revision required') return 'Revision Required';
+    return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
   }
 
   /** True when the selected record has AI Decision = Critical Violation; disables the Decision section. */
   get isDecisionSectionDisabled(): boolean {
     const record = this.selectedRecord();
     return record ? this.getAiDecisionLabel(record.status) === 'Critical Violation' : false;
+  }
+
+  /** True when the officer has already made a decision (from API or current session). Used to hide the decision form and show status/comment only. */
+  hasOfficerDecided(record: { status?: string; officerDecision?: string } | null): boolean {
+    if (!record) return false;
+    const s = (record.officerDecision ?? record.status ?? '').trim().toLowerCase();
+    return (
+      s === 'approve' || s === 'approved' ||
+      s === 'reject' || s === 'rejected' ||
+      s === 'revision' || s === 'revision required' || s === 'request revision' || s === 'requested revision'
+    );
+  }
+
+  /** Decision type for records that have already been decided (used to show the right summary in Decision section). */
+  getOfficerDecisionType(record: { status?: string; officerDecision?: string } | null): 'approve' | 'reject' | 'revision' | null {
+    if (!record) return null;
+    const s = (record.officerDecision ?? record.status ?? '').trim().toLowerCase();
+    if (s === 'approve' || s === 'approved') return 'approve';
+    if (s === 'reject' || s === 'rejected') return 'reject';
+    if (s === 'revision' || s === 'revision required' || s === 'request revision' || s === 'requested revision') return 'revision';
+    return null;
   }
 
   /** Format submitted date/time for display (e.g. "Mar 9, 2026, 5:55 AM"). */
@@ -404,13 +455,20 @@ export class DashboardComponent implements OnInit {
     return `${datePart}, ${timePart}`;
   }
 
-  /** Load image URLs from GET /review/{app_id}/images for selected record (admin). */
-  loadAdminReviewImages(permitId: string): void {
+  /** Load image URLs from GET /review/{app_id}/images for selected record (admin). Uses application_id, never placeholder "—". */
+  loadAdminReviewImages(applicationId: string): void {
+    if (!applicationId || applicationId.trim() === '' || applicationId === '—') {
+      this.adminReviewImagesLoading = false;
+      this.adminBlueprintImageUrl = null;
+      this.adminPhotoUrls = [];
+      return;
+    }
+    const appId = applicationId.trim();
     this.adminReviewImagesLoading = true;
     this.adminBlueprintImageUrl = null;
     this.adminPhotoUrls = [];
     const base = (environment as { reviewStreamBaseUrl?: string }).reviewStreamBaseUrl || '';
-    this.applicationsApi.getReviewImages(permitId).subscribe({
+    this.applicationsApi.getReviewImages(appId).subscribe({
       next: (res) => {
         this.adminReviewImagesLoading = false;
         const paths = res.images || [];
@@ -459,8 +517,17 @@ export class DashboardComponent implements OnInit {
   selectRecord(record: AdminRecord): void {
     if (!record) return;
     this.selectedRecord.set({ ...record });
-    this.loadAdminFindings(record.permitId);
-    this.loadAdminReviewImages(record.permitId);
+    const appId = record.applicationId;
+    if (appId) {
+      this.loadAdminFindings(appId);
+      this.loadAdminReviewImages(appId);
+    } else {
+      this.adminFindings = [];
+      this.adminFindingsError = '';
+      this.adminFindingsLoading = false;
+      this.adminBlueprintImageUrl = null;
+      this.adminPhotoUrls = [];
+    }
     this.activeDetailContent.set(-1);
     this.decisionConfirmed.set(false);
     this.decisionConfirmedChoice.set(null);
@@ -475,25 +542,32 @@ export class DashboardComponent implements OnInit {
     return this.adminRecords.find(r => r.permitId === permitId);
   }
 
-  /** Load AI findings from GET /review/{app_id}/results for the selected record (admin detail). */
-  loadAdminFindings(permitId: string): void {
+  /** Load AI findings from GET /review/{app_id}/results for the selected record (admin detail). Uses application_id, never placeholder "—". */
+  loadAdminFindings(applicationId: string): void {
+    if (!applicationId || applicationId.trim() === '' || applicationId === '—') {
+      this.adminFindingsLoading = false;
+      this.adminFindingsError = '';
+      this.adminFindings = [];
+      return;
+    }
+    const appId = applicationId.trim();
     this.adminFindingsLoading = true;
     this.adminFindingsError = '';
     this.adminFindings = [];
-    this.applicationsApi.getReviewResults(permitId).subscribe({
+    this.applicationsApi.getReviewResults(appId).subscribe({
       next: (res) => {
         this.adminFindingsLoading = false;
         const raw = res.findings ?? res.all_findings ?? [];
         this.adminFindings = raw.map((f: ReviewStreamFinding) => this.mapFindingToDisplay(f));
       },
-      error: (err) => {
+      error: (err: unknown) => {
         this.adminFindingsLoading = false;
-        const status = err?.status ?? err?.error?.status;
+        const status = (err as { status?: number; error?: { status?: number } })?.status ?? (err as { error?: { status?: number } })?.error?.status;
         if (status === 404) {
           this.adminFindings = [];
           this.adminFindingsError = '';
         } else {
-          this.adminFindingsError = err?.message ?? 'Failed to load AI findings.';
+          this.adminFindingsError = getUserFriendlyErrorMessage(err, 'Unable to load AI findings. Please try again.');
         }
       },
     });
@@ -522,6 +596,11 @@ export class DashboardComponent implements OnInit {
     return 'status-' + status.toLowerCase().replace(/\s+/g, '-');
   }
 
+  /** AI findings with Critical severity, for Rejection Summary list. */
+  get criticalFindings(): { agent: string; findings: string; aiSuggestion: string; status: string }[] {
+    return this.adminFindings.filter((f) => (f.status ?? '').toLowerCase() === 'critical');
+  }
+
   selectPermitAsUser(permit: Permit): void {
     const appId = permit.permitId;
     this.router.navigate(['/view-application'], { state: { appId } });
@@ -545,16 +624,55 @@ export class DashboardComponent implements OnInit {
     this.siteImagesEnlarged.set(null);
   }
 
+  /** Generate permit_id for approved applications, e.g. ATX-2026-1020. */
+  private generatePermitId(appId: string): string {
+    const year = new Date().getFullYear();
+    const suffix = appId.slice(-4);
+    const num = /^\d{4}$/.test(suffix) ? suffix : String(1000 + Math.abs(this.hashCode(suffix) % 9000));
+    return `ATX-${year}-${num}`;
+  }
+
+  private hashCode(s: string): number {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return h;
+  }
+
   confirmDecision(): void {
     const choice = this.decisionChoice();
     const record = this.selectedRecord();
-    if (!choice || !record?.permitId) return;
+    const appId = record?.applicationId ?? record?.permitId;
+    if (!choice || !record || !appId || appId === '—' || appId.trim() === '') return;
 
     this.decisionConfirmError = '';
     this.decisionConfirmLoading = true;
-    const comment = choice === 'revision' || choice === 'reject' ? this.decisionComment || '' : '';
+    const comment = choice === 'revision' || choice === 'reject' ? (this.decisionComment || '').trim() : '';
+    const officerDecidedAt = new Date().toISOString();
 
-    this.applicationsApi.submitInspectorFeedback(record.permitId, { decision: choice, comment }).subscribe({
+    let officerDecisionValue: string;
+    let officerComment: string | null;
+    let permitId: string | null;
+
+    if (choice === 'approve') {
+      officerDecisionValue = 'approved';
+      officerComment = null;
+      permitId = this.generatePermitId(appId.trim());
+    } else if (choice === 'revision') {
+      officerDecisionValue = 'revision required';
+      officerComment = comment || null;
+      permitId = null;
+    } else {
+      officerDecisionValue = 'reject';
+      officerComment = comment || null;
+      permitId = null;
+    }
+
+    this.applicationsApi.submitOfficerDecision(appId.trim(), {
+      officer_decision: officerDecisionValue,
+      officer_comment: officerComment ?? '',
+      permit_id: permitId ?? '',
+      officer_decided_at: officerDecidedAt,
+    }).subscribe({
       next: () => {
         this.decisionConfirmLoading = false;
         this.decisionConfirmed.set(true);
@@ -565,25 +683,45 @@ export class DashboardComponent implements OnInit {
         }
         const statusMap = { approve: 'Approved', reject: 'Rejected', revision: 'Requested Revision' } as const;
         record.status = statusMap[choice];
+        record.officerDecision = officerDecisionValue;
+        record.officerDecidedAt = officerDecidedAt;
         const idx = this.adminRecords.findIndex((r) => r.permitId === record.permitId);
-        if (idx !== -1) this.adminRecords[idx] = { ...this.adminRecords[idx], status: record.status };
+        if (idx !== -1) this.adminRecords[idx] = { ...this.adminRecords[idx], status: record.status, officerDecision: officerDecisionValue, officerDecidedAt };
       },
-      error: (err) => {
+      error: (err: unknown) => {
         this.decisionConfirmLoading = false;
-        this.decisionConfirmError = err?.message ?? 'Failed to submit decision.';
+        this.decisionConfirmError = getUserFriendlyErrorMessage(err, 'Unable to submit decision. Please try again.');
       },
     });
   }
 
   getDecisionConfirmedTimestamp(): string {
     const d = this.decisionConfirmedAt();
-    if (!d) return '';
+    if (d) return this.formatDecisionTimestamp(d);
+    const record = this.selectedRecord();
+    const iso = record?.officerDecidedAt?.trim();
+    if (iso) {
+      const d2 = new Date(iso);
+      if (!Number.isNaN(d2.getTime())) return this.formatDecisionTimestamp(d2);
+    }
+    return '';
+  }
+
+  private formatDecisionTimestamp(d: Date): string {
     const datePart = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const h = d.getHours();
     const m = d.getMinutes();
     const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-    const tz = d.toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop() ?? 'CST';
-    return `${datePart} - ${timeStr} ${tz}`;
+    return `${datePart} - ${timeStr}`;
+  }
+
+  /** Format officer_decided_at for display in list or detail. Returns empty string when not set. */
+  formatOfficerDecidedAt(record: { officerDecidedAt?: string } | null): string {
+    const iso = record?.officerDecidedAt?.trim();
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return this.formatDecisionTimestamp(d);
   }
 
   openImageEnlarged(index: number): void {
@@ -674,24 +812,34 @@ export class DashboardComponent implements OnInit {
   submitFeedback(): void {
     const text = (this.feedbackText || '').trim();
     const record = this.selectedRecord();
-    if (!record?.permitId || !text) {
+    const appId = record?.applicationId ?? record?.permitId;
+    if (!appId || appId === '—' || appId.trim() === '' || !text) {
       return;
     }
     this.feedbackSubmitting = true;
     this.feedbackError = '';
-    this.applicationsApi.updateFeedback(record.permitId, text).subscribe({
+    this.applicationsApi.submitInspectorFeedback(appId.trim(), { comment: text }).subscribe({
       next: () => {
         this.feedbackSubmitting = false;
         this.closeFeedbackModal();
       },
-      error: (err) => {
+      error: (err: unknown) => {
         this.feedbackSubmitting = false;
-        this.feedbackError = err?.message ?? 'Failed to submit feedback.';
+        this.feedbackError = getUserFriendlyErrorMessage(err, 'Unable to submit feedback. Please try again.');
       },
     });
   }
 
   getStatusClass(status: string): string {
     return 'status-' + status.toLowerCase().replace(/\s+/g, '-');
+  }
+
+  /** Capitalize first letter of each word in application status for user list (e.g. "review pending" -> "Review Pending"). */
+  formatApplicationStatus(status: string): string {
+    if (!status) return '';
+    return status
+      .split(/\s+/)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
   }
 }

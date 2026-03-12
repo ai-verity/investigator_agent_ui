@@ -2,7 +2,7 @@ import { Component, OnDestroy, ViewChild, ElementRef, AfterViewChecked } from '@
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { ApplicationsApiService, StartApplicationRequest, SowRequest, SowResponse, ReviewStreamEvent } from '../../../services/applications-api.service';
+import { ApplicationsApiService, StartApplicationRequest, SowRequest, SowResponse, ReviewStreamEvent, getUserFriendlyErrorMessage } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 import { forkJoin, of, Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
@@ -446,7 +446,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     this.reviewStreamSubscription = this.applicationsApi.getReviewStream(this.applicationId).subscribe({
       next: (event: ReviewStreamEvent) => this.applyReviewStreamEvent(event),
       error: (err) => {
-        this.reviewStreamError = err?.message || 'Review stream failed. Set Bearer token (e.g. in Settings or environment.reviewStreamAuthToken) if the API requires authentication.';
+        this.reviewStreamError = getUserFriendlyErrorMessage(err, 'Unable to load the review stream. Please check your connection and try again.');
         this.reviewStreamSubscription = null;
       },
       complete: () => {

@@ -2,7 +2,7 @@ import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { jsPDF } from 'jspdf';
-import { ApplicationsApiService, ApplicationDetail, ReviewStreamFinding } from '../../../services/applications-api.service';
+import { ApplicationsApiService, ApplicationDetail, ReviewStreamFinding, getUserFriendlyErrorMessage } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 import { environment } from '../../../../environments/environment';
 
@@ -116,16 +116,16 @@ export class ViewApplicationComponent implements OnInit {
     this.photoUrls = [];
     const base = (environment as { reviewStreamBaseUrl?: string }).reviewStreamBaseUrl || '';
     this.applicationsApi.getReviewImages(appId).subscribe({
-      next: (res) => {
+      next: (res: { images?: string[] }) => {
         this.reviewImagesLoading = false;
         const paths = res.images || [];
-        const blueprintPath = paths.find((p) => p.includes('blueprint'));
+        const blueprintPath = paths.find((p: string) => p.includes('blueprint'));
         if (blueprintPath) {
           this.blueprintImageUrl = blueprintPath.startsWith('http') ? blueprintPath : `${base.replace(/\/$/, '')}/${blueprintPath.replace(/^\//, '')}`;
         }
         this.photoUrls = paths
-          .filter((p) => p.includes('photos'))
-          .map((p) => (p.startsWith('http') ? p : `${base.replace(/\/$/, '')}/${p.replace(/^\//, '')}`));
+          .filter((p: string) => p.includes('photos'))
+          .map((p: string) => (p.startsWith('http') ? p : `${base.replace(/\/$/, '')}/${p.replace(/^\//, '')}`));
       },
       error: () => {
         this.reviewImagesLoading = false;
@@ -144,6 +144,8 @@ export class ViewApplicationComponent implements OnInit {
       return Number.isNaN(n) ? s : n;
     };
     const opt = (v: unknown) => (v === undefined || v === null || toStr(v) === '' ? undefined : toStr(v));
+    const officer = opt(item.officer_decision);
+    const workflow = opt(item.status);
     return {
       feedback: opt(item.feedback),
       permitId: toStr(item.application_id ?? item.permit_id) || '',
@@ -162,7 +164,7 @@ export class ViewApplicationComponent implements OnInit {
       permitType: opt(item.application_type),
       submittedDate: opt(item.submitted_date),
       submittedTime: opt(item.submitted_time),
-      status: opt(item.status),
+      status: officer ?? workflow,
       signatureFileName: opt(item.signature_file_name),
       blueprintFileName: opt(item.blueprint_file_name),
       siteImagesCount: toNum(item.site_images_count),
@@ -318,26 +320,25 @@ export class ViewApplicationComponent implements OnInit {
     }
   }
 
-  /** Load findings from GET /review/{app_id}/results when step 5 is shown. */
   loadFindings(): void {
-    const appId = this.record?.permitId;
-    if (!appId) return;
+    const appId = (this.record?.permitId ?? '').trim();
+    if (!appId || appId === '—') return;
     this.complianceFindingsLoading = true;
     this.complianceFindingsError = '';
     this.applicationsApi.getReviewResults(appId).subscribe({
-      next: (res) => {
+      next: (res: { findings?: ReviewStreamFinding[]; all_findings?: ReviewStreamFinding[] }) => {
         this.complianceFindingsLoading = false;
         const raw = res.findings ?? res.all_findings ?? [];
         this.complianceFindings = raw.map((f: ReviewStreamFinding) => this.mapFindingToDisplay(f));
       },
-      error: (err) => {
+      error: (err: unknown) => {
         this.complianceFindingsLoading = false;
-        const status = err?.status ?? err?.error?.status;
+        const status = (err as { status?: number; error?: { status?: number } })?.status ?? (err as { error?: { status?: number } })?.error?.status;
         if (status === 404) {
           this.complianceFindings = [];
           this.complianceFindingsError = '';
         } else {
-          this.complianceFindingsError = err?.message ?? 'Failed to load findings.';
+          this.complianceFindingsError = getUserFriendlyErrorMessage(err, 'Unable to load findings. Please try again.');
         }
       },
     });

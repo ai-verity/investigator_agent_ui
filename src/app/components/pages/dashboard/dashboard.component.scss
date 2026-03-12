@@ -943,6 +943,23 @@
   word-break: break-word;
 }
 
+.rejection-critical-findings {
+  margin-top: 0.35rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  padding: 0.5rem 0.75rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.rejection-finding-item {
+  margin: 0.35rem 0;
+  color: #334155;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
 .decision-title {
   margin: 0 0 0.75rem;
   font-size: 1.05rem;
