@@ -43,6 +43,8 @@ export interface AdminRecord {
   scopeOfWork?: string;
   blueprintFileName?: string;
   siteImagesCount?: number;
+  /** When true, AI Decision shows Critical Violation and Officer Decision shows NA; Decision section is disabled. */
+  hasCritical?: boolean;
 }
 
 @Component({
@@ -211,6 +213,7 @@ export class DashboardComponent implements OnInit {
     const workflow = toStr(it.status ?? it.application_status).trim();
     const combinedStatus = officerDecision || workflow || '—';
     const officerDecidedAt = it.officer_decided_at ? String(it.officer_decided_at).trim() : undefined;
+    const hasCritical = it.has_critical === true || it.has_critical === 1;
     return {
       permitId,
       applicationId,
@@ -228,6 +231,7 @@ export class DashboardComponent implements OnInit {
       scopeOfWork: it.sow_text ? toStr(it.sow_text) : undefined,
       blueprintFileName: it.blueprint_file_name ? toStr(it.blueprint_file_name) : undefined,
       siteImagesCount: it.site_images_count != null ? Number(it.site_images_count) : undefined,
+      hasCritical,
     };
   }
 
@@ -254,12 +258,14 @@ export class DashboardComponent implements OnInit {
           // For user list, treat application_id as the primary Application ID.
           const rawId = it.application_id ?? it.app_id ?? it.permit_id;
           const applicationId = toStr(rawId) || '—';
+          // Prefer application_status so "pending" (not yet submitted) is used for Edit and label.
+          const status = toStr(it.officer_decision ?? it.application_status ?? it.status) || '—';
           return {
             permitId: applicationId,
             address: toStr(it.project_address ?? it.address) || '—',
             type: toStr(it.application_type ?? it.permit_type) || '—',
             zoningType: toStr(it.zoning_type ?? it.zoningType) || '—',
-            status: toStr(it.officer_decision ?? it.status ?? it.application_status) || '—',
+            status,
           };
         });
       },
@@ -297,19 +303,11 @@ export class DashboardComponent implements OnInit {
     ];
   }
 
-  /** Admin list filtered by zoning and permit type. Hide only pending; show submitted, completed, and all officer decisions (approved, rejected, requested revision). */
+  /** Admin list filtered by zoning and permit type. Hide only pending; show everything else (regardless of officer_decision). */
   get filteredAdminRecords(): AdminRecord[] {
-    let list = this.adminRecords;
-    const statusLower = (s: string | undefined) => (s ?? '').trim().toLowerCase();
-    list = list.filter((r) => {
-      const s = statusLower(r.status);
-      if (s === 'pending') return false;
-      if (s === 'submitted' || s === 'completed') return true;
-      if (s === 'approved' || s === 'approve') return true;
-      if (s === 'rejected' || s === 'reject') return true;
-      if (s === 'requested revision' || s === 'requested for revision' || s === 'revision') return true;
-      return true;
-    });
+    let list = this.adminRecords.filter(
+      (r) => (r.status ?? '').trim().toLowerCase() !== 'pending',
+    );
     const z = this.adminZoningFilter.trim();
     if (z) {
       const lower = z.toLowerCase();
@@ -380,11 +378,13 @@ export class DashboardComponent implements OnInit {
   }
 
   /**
-   * Map Officer Decision (status) to AI Decision per the rules:
-   * For applications the user was able to submit (submitted/completed), default is Compliant.
-   * NA → Critical Violation; Approved / Under Review → Compliant; Requested Revision / Rejected → Non Compliant.
+   * AI Decision label for a record. When has_critical is true: "Critical Violation".
+   * Otherwise maps status to Compliant / Non Compliant per officer/workflow rules.
    */
-  getAiDecisionLabel(officerStatus: string | undefined): string {
+  getAiDecisionLabel(record: AdminRecord | { status?: string; hasCritical?: boolean } | string | undefined): string {
+    if (record == null) return 'Compliant';
+    if (typeof record === 'object' && (record as { hasCritical?: boolean }).hasCritical === true) return 'Critical Violation';
+    const officerStatus = typeof record === 'string' ? record : (record as { status?: string }).status;
     if (officerStatus === undefined || officerStatus === null) return 'Compliant';
     const s = officerStatus.trim().toLowerCase();
     if (s === '' || s === 'pending' || s === 'review pending') return 'Compliant';
@@ -398,9 +398,11 @@ export class DashboardComponent implements OnInit {
     return 'Compliant';
   }
 
-  /** Officer Decision column: show "Review Pending" when officer_decision is empty; otherwise show the officer's decision (capitalized). */
-  getOfficerDecisionDisplay(record: { status?: string; officerDecision?: string }): string {
-    if (this.getAiDecisionLabel(record?.status) === 'Critical Violation') return 'Not Applicable';
+  /** Officer Decision column: show "NA" when has_critical (Critical Violation); "Review Pending" when empty; else officer decision. */
+  getOfficerDecisionDisplay(record: AdminRecord | { status?: string; officerDecision?: string; hasCritical?: boolean } | null): string {
+    if (!record) return 'Review Pending';
+    if ((record as { hasCritical?: boolean }).hasCritical === true) return 'NA';
+    if (this.getAiDecisionLabel(record) === 'Critical Violation') return 'NA';
     const raw = (record?.officerDecision ?? '').trim();
     if (!raw) return 'Review Pending';
     return this.capitalizeOfficerDecision(raw);
@@ -417,10 +419,10 @@ export class DashboardComponent implements OnInit {
     return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
   }
 
-  /** True when the selected record has AI Decision = Critical Violation; disables the Decision section. */
+  /** True when the selected record has has_critical true (AI Decision = Critical Violation); disables the Decision section. */
   get isDecisionSectionDisabled(): boolean {
     const record = this.selectedRecord();
-    return record ? this.getAiDecisionLabel(record.status) === 'Critical Violation' : false;
+    return record ? (record.hasCritical === true || this.getAiDecisionLabel(record) === 'Critical Violation') : false;
   }
 
   /** True when the officer has already made a decision (from API or current session). Used to hide the decision form and show status/comment only. */
@@ -606,6 +608,26 @@ export class DashboardComponent implements OnInit {
     this.router.navigate(['/view-application'], { state: { appId } });
   }
 
+  /** True when the citizen can edit this application (pending or revision required). */
+  canEditPermit(permit: Permit): boolean {
+    console.log("Permit===>", permit)
+    const s = (permit?.status ?? '').trim().toLowerCase();
+    return (
+      s === 'pending' ||
+      s === 'pending for submission' ||
+      s.startsWith('pending') ||
+      s === 'review pending' ||
+      s === 'revision required' ||
+      s === 'requested revision'
+    );
+  }
+
+  /** Navigate to applications page in edit mode for the given permit. */
+  editApplicationAsUser(permit: Permit): void {
+    if (!permit?.permitId) return;
+    this.router.navigate(['/applications'], { queryParams: { edit: permit.permitId } });
+  }
+
   clearUserSelection(): void {
     this.selectedRecord.set(null);
     this.siteImagesEnlarged.set(null);
@@ -654,7 +676,7 @@ export class DashboardComponent implements OnInit {
     let permitId: string | null;
 
     if (choice === 'approve') {
-      officerDecisionValue = 'approved';
+      officerDecisionValue = 'approve';
       officerComment = null;
       permitId = this.generatePermitId(appId.trim());
     } else if (choice === 'revision') {
@@ -834,9 +856,11 @@ export class DashboardComponent implements OnInit {
     return 'status-' + status.toLowerCase().replace(/\s+/g, '-');
   }
 
-  /** Capitalize first letter of each word in application status for user list (e.g. "review pending" -> "Review Pending"). */
+  /** Format application status for user list. "pending" -> "Pending for Submission"; else capitalize words. */
   formatApplicationStatus(status: string): string {
     if (!status) return '';
+    const s = status.trim().toLowerCase();
+    if (s === 'pending') return 'Pending for Submission';
     return status
       .split(/\s+/)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())

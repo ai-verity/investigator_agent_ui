@@ -75,7 +75,7 @@
                 <div class="record-right">
                   <div class="record-field">
                     <dt>AI Decision:</dt>
-                    <dd>{{ getAiDecisionLabel(record.status) }}</dd>
+                    <dd>{{ getAiDecisionLabel(record) }}</dd>
                   </div>
                   <div class="record-field">
                     <dt>Officer Decision:</dt>
@@ -498,8 +498,9 @@
                 <tr>
                   <th>Application ID</th>
                   <th>Address</th>
-                  <th>Permit Type</th>
+                  <th>Application Type</th>
                   <th>Application Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -513,11 +514,18 @@
                         {{ formatApplicationStatus(permit.status) }}
                       </span>
                     </td>
+                    <td (click)="$event.stopPropagation()">
+                      @if (canEditPermit(permit)) {
+                        <button type="button" class="btn-edit" (click)="editApplicationAsUser(permit)">
+                          Edit
+                        </button>
+                      }
+                    </td>
                   </tr>
                 }
                 @if (!userPermitsLoading && permits.length === 0) {
                   <tr>
-                    <td colspan="4">No applications found.</td>
+                    <td colspan="5">No applications found.</td>
                   </tr>
                 }
               </tbody>

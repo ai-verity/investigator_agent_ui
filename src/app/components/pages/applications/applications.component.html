@@ -51,7 +51,7 @@
       </div>
 
       <div class="form-row">
-        <label for="fullName" class="form-label">Full Name:</label>
+        <label for="fullName" class="form-label">Full Name: <span class="required-asterisk" aria-hidden="true">*</span></label>
         <input
           id="fullName"
           type="text"
@@ -104,7 +104,7 @@
       </div>
 
       <div class="form-row">
-        <label for="address" class="form-label">Address:</label>
+        <label for="address" class="form-label">Address: <span class="required-asterisk" aria-hidden="true">*</span></label>
         <textarea
           id="address"
           formControlName="address"
@@ -142,7 +142,7 @@
   @if (currentStep === 2) {
     <form [formGroup]="step2Form" (ngSubmit)="saveAndContinue()" class="applicant-form property-form">
       <div class="form-row">
-        <label for="zoningType" class="form-label">Zoning Type:</label>
+        <label for="zoningType" class="form-label">Zoning Type: <span class="required-asterisk" aria-hidden="true">*</span></label>
         <input
           id="zoningType"
           type="text"
@@ -232,7 +232,7 @@
       <div class="step3-content">
     <form [formGroup]="step3Form" (ngSubmit)="saveAndContinue()" class="applicant-form step3-form">
       <div class="form-row">
-        <label for="describeProposedWork" class="form-label">Describe Proposed Work:</label>
+        <label for="describeProposedWork" class="form-label">Describe Proposed Work: <span class="required-asterisk" aria-hidden="true">*</span></label>
         <textarea
           id="describeProposedWork"
           formControlName="describeProposedWork"
@@ -247,7 +247,7 @@
       </div>
 
       <div class="form-row">
-        <label class="form-label">Upload Structural Blueprint</label>
+        <label class="form-label">Upload Structural Blueprint <span class="required-asterisk" aria-hidden="true">*</span></label>
         <div
           class="drop-zone"
           (dragover)="$event.preventDefault(); $event.stopPropagation()"
@@ -276,7 +276,7 @@
       </div>
 
       <div class="form-row">
-        <label class="form-label">Upload Site Images (up to {{ maxSiteImages }} images)</label>
+        <label class="form-label">Upload Site Images (up to {{ maxSiteImages }} images) <span class="required-asterisk" aria-hidden="true">*</span></label>
         <div
           class="drop-zone"
           [class.drop-zone-full]="siteImageFiles.length >= maxSiteImages"

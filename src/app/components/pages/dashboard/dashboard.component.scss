@@ -1803,3 +1803,19 @@
     color: #fff;
   }
 }
+
+.btn-edit {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.875rem;
+  color: #0d7377;
+  background: transparent;
+  border: 1px solid #0d7377;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+
+  &:hover {
+    background: #0d7377;
+    color: #fff;
+  }
+}

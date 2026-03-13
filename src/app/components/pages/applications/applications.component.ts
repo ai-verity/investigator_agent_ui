@@ -1,8 +1,8 @@
-import { Component, OnDestroy, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
+import { Component, OnDestroy, ViewChild, ElementRef, AfterViewChecked, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { ReactiveFormsModule, FormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { ApplicationsApiService, StartApplicationRequest, SowRequest, SowResponse, ReviewStreamEvent, getUserFriendlyErrorMessage } from '../../../services/applications-api.service';
+import { ApplicationsApiService, StartApplicationRequest, SowRequest, SowResponse, ReviewStreamEvent, getUserFriendlyErrorMessage, ApplicationDetail } from '../../../services/applications-api.service';
 import { MarkdownPipe } from '../../../pipes/markdown.pipe';
 import { forkJoin, of, Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
@@ -52,7 +52,7 @@ export interface AgentActivityEvent {
   templateUrl: './applications.component.html',
   styleUrl: './applications.component.scss',
 })
-export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
+export class ApplicationsComponent implements OnInit, OnDestroy, AfterViewChecked {
   currentStep = 1;
   totalSteps = 6;
   steps = [1, 2, 3, 4, 5, 6];
@@ -164,6 +164,7 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
   constructor(
     private fb: FormBuilder,
     private router: Router,
+    private route: ActivatedRoute,
     private applicationsApi: ApplicationsApiService,
   ) {
     this.applicationId = this.generateUUID();
@@ -176,14 +177,52 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
       address: ['', [Validators.required, Validators.minLength(3)]],
     });
     this.step2Form = this.fb.nonNullable.group({
-      zoningType: [''],
+      zoningType: ['', [Validators.required]],
       landAreaSqFt: [''],
       existingBuiltUpArea: [''],
       proposedBuiltUpArea: [''],
       noOfFloors: [''],
     });
     this.step3Form = this.fb.nonNullable.group({
-      describeProposedWork: [''],
+      describeProposedWork: ['', [Validators.required]],
+    });
+  }
+
+  ngOnInit(): void {
+    const editId = this.route.snapshot.queryParamMap.get('edit');
+    if (editId?.trim()) {
+      this.applicationId = editId.trim();
+      this.applicationStarted = true;
+      this.maxStepReached = 3;
+      this.applicationsApi.viewApplication(this.applicationId).subscribe({
+        next: (detail: ApplicationDetail) => this.patchFormsFromDetail(detail),
+        error: () => {
+          // Keep pre-filled applicationId and applicationStarted; user can still edit steps 1–3
+        },
+      });
+    }
+  }
+
+  /** Pre-fill step 1–3 forms from application detail (edit mode). */
+  private patchFormsFromDetail(detail: ApplicationDetail): void {
+    const o = detail as unknown as Record<string, unknown>;
+    const str = (v: unknown) => (v === undefined || v === null ? '' : String(v));
+    this.step1Form.patchValue({
+      fullName: str(detail.owner_name ?? detail.full_name ?? o['owner_name'] ?? o['full_name']) || this.step1Form.get('fullName')?.value,
+      address: str(detail.project_address ?? detail.address ?? o['project_address'] ?? o['address']) || this.step1Form.get('address')?.value,
+      organization: str(detail.organization ?? o['organization']) || this.step1Form.get('organization')?.value,
+      email: str(detail.email ?? o['email']) || this.step1Form.get('email')?.value,
+      phone: str(detail.phone ?? o['phone']) || this.step1Form.get('phone')?.value,
+    });
+    this.step2Form.patchValue({
+      zoningType: str(detail.zoning_type ?? o['zoning_type']) || this.step2Form.get('zoningType')?.value,
+      landAreaSqFt: str(detail.land_area_sq_ft ?? o['land_area_sq_ft']) || this.step2Form.get('landAreaSqFt')?.value,
+      existingBuiltUpArea: str(detail.existing_built_up_area ?? o['existing_built_up_area']) || this.step2Form.get('existingBuiltUpArea')?.value,
+      proposedBuiltUpArea: str(detail.proposed_built_up_area ?? o['proposed_built_up_area']) || this.step2Form.get('proposedBuiltUpArea')?.value,
+      noOfFloors: str(detail.no_of_floors ?? o['no_of_floors']) || this.step2Form.get('noOfFloors')?.value,
+    });
+    this.step3Form.patchValue({
+      describeProposedWork: str(detail.describe_proposed_work ?? detail.sow_text ?? o['describe_proposed_work'] ?? o['sow_text']) || this.step3Form.get('describeProposedWork')?.value,
     });
   }
 
@@ -346,13 +385,15 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
       }
       const step1 = this.step1Form.getRawValue();
       const step2 = this.step2Form.getRawValue();
-      const startPayload: StartApplicationRequest = {
+      const startPayload: StartApplicationRequest & { has_critical?: boolean } = {
         application_id: this.applicationId,
         date: new Date().toISOString(),
         application_type: 'NEW',
         owner_name: (step1.fullName ?? '').toString(),
         project_address: (step1.address ?? '').toString(),
         zoning_type: (step2.zoningType ?? '').toString(),
+        // Step 2: initial state – treat as has_critical = true until AI review completes.
+        has_critical: true,
       };
       this.startApplicationLoading = true;
       this.startApplicationError = '';
@@ -366,7 +407,10 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
           this.startApplicationError = '';
           this.currentStep = 3;
           this.maxStepReached = Math.max(this.maxStepReached, 3);
-          this.applicationsApi.updateApplicationStatus(this.applicationId, 'pending').subscribe({ error: () => {} });
+          // Step 2: mark status pending with has_critical = true.
+          this.applicationsApi
+            .updateApplicationStatus(this.applicationId, 'pending', { has_critical: true })
+            .subscribe({ error: () => {} });
         },
         error: (err) => {
           console.error('Start application failed:', err);
@@ -376,56 +420,70 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
       });
     } else if (this.currentStep === 3) {
       this.step3Form.markAllAsTouched();
-      if (this.step3Form.valid) {
-        if (this.step3UploadLoading) return;
+      if (!this.step3Form.valid) return;
 
-        this.step3UploadLoading = true;
-        this.blueprintUploadError = '';
-        this.photosUploadError = '';
-
-        const uploads = forkJoin({
-          blueprint: this.blueprintFile
-            ? this.applicationsApi.uploadBlueprint(this.applicationId, this.blueprintFile)
-            : of(null),
-          photos:
-            this.siteImageFiles.length > 0 ? this.applicationsApi.uploadPhotos(this.applicationId, this.siteImageFiles) : of(null),
-        });
-
-        // Mirror loading flags so UI can show progress under each control
-        this.blueprintUploadLoading = !!this.blueprintFile;
-        this.photosUploadLoading = this.siteImageFiles.length > 0;
-
-        uploads.subscribe({
-          next: () => {
-            this.step3UploadLoading = false;
-            this.blueprintUploadLoading = false;
-            this.photosUploadLoading = false;
-            this.reviewStreamError = '';
-            this.currentStep = 4; // Move to Step 4 first, then start streaming
-            this.maxStepReached = Math.max(this.maxStepReached, 4);
-            this.applicationsApi.updateApplicationStatus(this.applicationId, 'submitted').subscribe({ error: () => {} });
-            this.startReviewStream(); // Keeps running until stream ends; statuses update from events, then all set to Completed on complete
-          },
-          error: (err) => {
-            console.error('Step 3 upload failed:', err);
-            this.step3UploadLoading = false;
-            this.blueprintUploadLoading = false;
-            this.photosUploadLoading = false;
-            // Keep user on Step 3 and show errors (best-effort: use same err for whichever was attempted)
-            const statusVal = err?.status;
-            const status =
-              statusVal === 0 || typeof statusVal === 'number'
-                ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
-                : '';
-            const url = err?.url ? ` URL: ${err.url}` : '';
-            const hint =
-              statusVal === 0 ? ' Request blocked (CORS / network).' : statusVal === 404 ? ' Upload endpoint not found.' : '';
-            const msg = `Upload failed${status}.${hint}${url}`;
-            if (this.blueprintFile) this.blueprintUploadError = msg;
-            if (this.siteImageFiles.length > 0) this.photosUploadError = msg;
-          },
-        });
+      // Enforce blueprint and at least one site image as required for Step 3.
+      this.blueprintUploadError = '';
+      this.photosUploadError = '';
+      let hasError = false;
+      if (!this.blueprintFile) {
+        this.blueprintUploadError = 'Structural blueprint is required.';
+        hasError = true;
       }
+      if (this.siteImageFiles.length === 0) {
+        this.photosUploadError = 'At least one site image is required.';
+        hasError = true;
+      }
+      if (hasError) return;
+
+      if (this.step3UploadLoading) return;
+
+      this.step3UploadLoading = true;
+      this.blueprintUploadError = '';
+      this.photosUploadError = '';
+
+      const uploads = forkJoin({
+        blueprint: this.applicationsApi.uploadBlueprint(this.applicationId, this.blueprintFile as File),
+        photos: this.applicationsApi.uploadPhotos(this.applicationId, this.siteImageFiles),
+      });
+
+      // Mirror loading flags so UI can show progress under each control
+      this.blueprintUploadLoading = true;
+      this.photosUploadLoading = this.siteImageFiles.length > 0;
+
+      uploads.subscribe({
+        next: () => {
+          this.step3UploadLoading = false;
+          this.blueprintUploadLoading = false;
+          this.photosUploadLoading = false;
+          this.reviewStreamError = '';
+          this.currentStep = 4; // Move to Step 4 first, then start streaming
+          this.maxStepReached = Math.max(this.maxStepReached, 4);
+          // Step 3: status submitted, still treat has_critical as true until AI completes.
+          this.applicationsApi
+            .updateApplicationStatus(this.applicationId, 'submitted', { has_critical: true })
+            .subscribe({ error: () => {} });
+          this.startReviewStream(); // Keeps running until stream ends; statuses update from events, then all set to Completed on complete
+        },
+        error: (err) => {
+          console.error('Step 3 upload failed:', err);
+          this.step3UploadLoading = false;
+          this.blueprintUploadLoading = false;
+          this.photosUploadLoading = false;
+          // Keep user on Step 3 and show errors
+          const statusVal = err?.status;
+          const status =
+            statusVal === 0 || typeof statusVal === 'number'
+              ? ` (HTTP ${statusVal}${err?.statusText ? ` ${err.statusText}` : ''})`
+              : '';
+          const url = err?.url ? ` URL: ${err.url}` : '';
+          const hint =
+            statusVal === 0 ? ' Request blocked (CORS / network).' : statusVal === 404 ? ' Upload endpoint not found.' : '';
+          const msg = `Upload failed${status}.${hint}${url}`;
+          this.blueprintUploadError = msg;
+          this.photosUploadError = msg;
+        },
+      });
     }
   }
 
@@ -530,6 +588,10 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
           };
         });
       }
+      // Step 4: AI review finished – mark has_critical as false so backend knows this application passed critical checks.
+      this.applicationsApi
+        .updateApplicationStatus(this.applicationId, 'submitted', { has_critical: true })
+        .subscribe({ error: () => {} });
       return;
     }
 
@@ -770,7 +832,12 @@ export class ApplicationsComponent implements OnDestroy, AfterViewChecked {
     const num = Math.floor(1000 + Math.random() * 9000);
     this.submissionPermitId = `BLR-${year}-${num}`;
     this.maxStepReached = Math.max(this.maxStepReached, 6);
-    this.applicationsApi.updateApplicationStatus(this.applicationId, 'completed').subscribe({ error: () => {} });
+    // Step 5/6: final submission – reinforce has_critical = false for backend.
+    this.applicationsApi
+      .updateApplicationStatus(this.applicationId, 'completed', {
+        has_critical: false,
+      })
+      .subscribe({ error: () => {} });
     this.goToStep(6);
   }
 

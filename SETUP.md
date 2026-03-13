@@ -1,140 +1,152 @@
 # Investigator Agent UI – Setup Guide
 
-Steps to run this Angular application on a new machine.
+This document describes how to set up and run the Investigator Agent Angular UI, including prerequisites and their versions.
 
 ---
 
 ## 1. Prerequisites
 
-Install on the new machine:
+Install the following on your machine before setting up the project.
 
-| Requirement | Version / Notes |
-|-------------|-----------------|
-| **Node.js** | v18.x or v20.x (LTS). Check: `node -v` |
-| **npm**     | v9+ (comes with Node). Check: `npm -v` |
+| Prerequisite | Minimum Version | Notes |
+|-------------|-----------------|--------|
+| **Node.js** | 18.19.x, 20.11.x, or 22.x (LTS recommended) | Required for Angular 20. Prefer Node 20 LTS. |
+| **npm** | 10.x or later | Usually bundled with Node.js. |
+| **Angular CLI** | 20.x | Installed as a project dev dependency; optional global install. |
 
-- Download Node.js: https://nodejs.org/  
-- Or use a version manager: **nvm**, **fnm**, or **volta**.
+### Checking versions
+
+```bash
+node --version   # e.g. v20.11.0
+npm --version   # e.g. 10.2.4
+```
+
+### Installing Node.js
+
+- **macOS / Windows:** Download the LTS installer from [nodejs.org](https://nodejs.org/).
+- **macOS (Homebrew):** `brew install node@20`
+- **Ubuntu/Debian:** Use [NodeSource](https://github.com/nodesource/distributions) or the official Node.js binary distribution for Node 20 LTS.
 
 ---
 
-## 2. Get the project on the machine
+## 2. Project Dependencies (Versions)
 
-**Option A – Git**
+The project uses these main dependency versions (from `package.json`):
+
+| Package | Version | Purpose |
+|--------|---------|---------|
+| Angular (core, common, compiler, etc.) | ^20.3.1 | Framework |
+| Angular CLI | ~20.3.2 | Build and serve |
+| TypeScript | ~5.9.2 | Language |
+| zone.js | ~0.15.0 | Angular change detection |
+| jspdf | ^4.2.0 | PDF generation (e.g. approval certificates) |
+| Karma / Jasmine | (see package.json) | Unit tests |
+
+---
+
+## 3. Setup Steps
+
+### 3.1 Clone the repository (if not already done)
 
 ```bash
-git clone <repository-url> investigator_agent_ui
+git clone <repository-url>
 cd investigator_agent_ui
 ```
 
-**Option B – Copy project folder**
-
-Copy the entire project directory (including `src/`, `angular.json`, `package.json`, etc.) to the new machine and `cd` into it.
-
----
-
-## 3. Install dependencies
-
-From the project root:
+### 3.2 Install npm dependencies
 
 ```bash
 npm install
 ```
 
-This installs Angular 20, jsPDF, and other dependencies from `package.json`.  
-If you see audit warnings, you can run `npm audit fix` (optional).
+This installs all dependencies listed in `package.json`, including Angular 20 and the Angular CLI.
 
----
+### 3.3 Configure environment (optional for local dev)
 
-## 4. Configure environment (API URLs)
+For **local development**, the app uses `src/environments/environment.ts`. Default values:
 
-The app talks to backend APIs. Set the base URLs (and optional auth) in:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `applicationsBaseUrl` | `http://localhost:8001` | Base URL for applications API (list, view, status, inspector-status, etc.). |
+| `reviewStreamBaseUrl` | `http://localhost:8001` | Base URL for review stream (e.g. `/review/{id}/stream`, `/review/{id}/results`, `/review/{id}/images`). |
+| `reviewStreamAuthToken` | `''` | Optional Bearer token for review-stream endpoints. |
+| `apiUrl` | `http://localhost:3000/api` | General API URL if used elsewhere. |
 
-**Development:** `src/environments/environment.ts`
+To point to a different backend, edit `src/environments/environment.ts` (and for production, `src/environments/environment.prod.ts`).
 
-```typescript
-export const environment = {
-  production: false,
-  apiUrl: 'http://localhost:3000/api',
-  applicationsBaseUrl: 'http://localhost:8001',   // Applications & review APIs
-  reviewStreamBaseUrl: 'http://localhost:8001',   // Review stream & images
-  reviewStreamAuthToken: '',                      // Optional Bearer token for review APIs
-};
-```
-
-**Production:** `src/environments/environment.prod.ts`
-
-```typescript
-export const environment = {
-  production: true,
-  apiUrl: '/api',
-  applicationsBaseUrl: 'https://your-api-server.com',  // Your production API base URL
-  reviewStreamBaseUrl: 'https://your-api-server.com', // Same or different for review
-};
-```
-
-- Replace `http://localhost:8001` with your backend base URL if it runs elsewhere.  
-- If the review/stream endpoints need a Bearer token, set `reviewStreamAuthToken` (or wire your auth service to provide it).
-
----
-
-## 5. Run the application
-
-**Development server:**
+### 3.4 Run the development server
 
 ```bash
 npm start
 ```
 
-- App is served at: **http://localhost:4200**  
-- Uses `ng serve --host 0.0.0.0 --port 4200` so it’s reachable from other devices on the network.  
-- Changes in code trigger a reload.
+Or, using the Angular CLI directly:
 
-**Production build (optional):**
+```bash
+npx ng serve
+```
+
+- App is served at **http://localhost:4200** (or the port shown in the terminal).
+- The script in `package.json` uses `--host 0.0.0.0` and `--port 4200` so it’s reachable on the network and from other devices if needed.
+
+### 3.5 Build for production
 
 ```bash
 npm run build
 ```
 
-- Output is in `dist/investigator-agent/`.  
-- Serve that folder with any static file server (e.g. Nginx, Apache, or `npx serve dist/investigator-agent`).
+Output is in `dist/investigator-agent/`. Serve that folder with any static file server or your web server (e.g. Nginx, Apache).
+
+For production, configure `src/environments/environment.prod.ts` with the correct `applicationsBaseUrl`, `reviewStreamBaseUrl`, and optional `reviewStreamAuthToken` (if your backend uses them).
 
 ---
 
-## 6. Backend / API expectations
+## 4. Optional: Global Angular CLI
 
-The UI assumes these backend services (or proxies) are available:
+To use the `ng` command globally (e.g. `ng serve`, `ng generate`):
 
-| Purpose              | Default URL                     | Used for |
-|----------------------|----------------------------------|----------|
-| Applications API     | `applicationsBaseUrl` (e.g. 8001) | List apps, view application, start app, SOW, uploads, inspector feedback, feedback PATCH |
-| Review stream        | `reviewStreamBaseUrl/review/{app_id}/stream` | Step 4 agent stream (New Application) |
-| Review results       | `reviewStreamBaseUrl/review/{app_id}/results` | Findings (Step 5, admin AI findings) |
-| Review images        | `reviewStreamBaseUrl/review/{app_id}/images`  | Blueprint & photos (View Application, admin) |
+```bash
+npm install -g @angular/cli@20
+```
 
-- View Application and dashboard (admin/user) need the **applications** and **review** APIs to be running (or proxied) at the configured base URLs.  
-- CORS must allow the UI origin (e.g. `http://localhost:4200` in dev).
+Then you can run:
 
----
+```bash
+ng serve
+ng build
+ng test
+```
 
-## 7. Quick checklist
-
-- [ ] Node.js v18+ or v20+ and npm installed  
-- [ ] Project on machine (clone or copy)  
-- [ ] `npm install` completed  
-- [ ] `src/environments/environment.ts` updated with correct API base URL(s)  
-- [ ] Backend (or mock) running at the configured URL  
-- [ ] `npm start` and open http://localhost:4200  
+The project works without a global install by using `npx ng` or the `npm start` / `npm run build` scripts.
 
 ---
 
-## 8. Troubleshooting
+## 5. Running tests
 
-| Issue | What to try |
-|-------|---------------------|
-| `npm install` fails | Use Node v18 or v20; delete `node_modules` and `package-lock.json`, run `npm install` again. |
-| Blank page / 404 | Confirm you open `http://localhost:4200` (and that the dev server is running). |
-| API errors / CORS | Ensure backend allows the UI origin and that `applicationsBaseUrl` / `reviewStreamBaseUrl` point to the correct host/port. |
-| Review stream not loading | If the review API requires auth, set `reviewStreamAuthToken` or ensure your auth service provides a valid Bearer token. |
+```bash
+npm test
+```
 
-For production, also set `applicationsBaseUrl` and `reviewStreamBaseUrl` in `environment.prod.ts` and build with `npm run build`.
+Runs unit tests with Karma and Jasmine.
+
+---
+
+## 6. Troubleshooting
+
+| Issue | Suggestion |
+|-------|-------------|
+| **Node version mismatch** | Use Node 18.19+, 20.11+, or 22.x. Check with `node -v`. |
+| **npm install fails** | Delete `node_modules` and `package-lock.json`, then run `npm install` again. |
+| **Port 4200 in use** | Run `ng serve --port 4300` (or another port). |
+| **API / CORS errors** | Ensure the backend at `applicationsBaseUrl` / `reviewStreamBaseUrl` allows the UI origin (e.g. `http://localhost:4200`) and required headers. |
+| **Blank or 404 on refresh** | If using client-side routing in production, configure your server to serve `index.html` for all routes (e.g. try_files in Nginx). |
+
+---
+
+## 7. Summary
+
+- **Prerequisites:** Node.js 18.19+ / 20.11+ / 22.x, npm 10+.
+- **Install:** `npm install`
+- **Run locally:** `npm start` → open http://localhost:4200
+- **Build:** `npm run build` → output in `dist/investigator-agent/`
+- **Backend:** Set `applicationsBaseUrl` and `reviewStreamBaseUrl` in `src/environments/environment.ts` (and `environment.prod.ts` for production) to match your API.

@@ -57,6 +57,8 @@ export interface ApplicationListItem {
   sow_text?: string;
   blueprint_file_name?: string;
   site_images_count?: number;
+  /** When true, AI Decision shows Critical Violation and Decision section is disabled. */
+  has_critical?: boolean | number;
 }
 
 /** Response from POST /applications/{app_id} (view application). Map all fields from API. */
@@ -274,14 +276,17 @@ export class ApplicationsApiService {
   /**
    * PATCH /applications/{app_id}/application-status – Update application status.
    * Use when user reaches milestones: pending (after start), submitted (after step 3), completed (after step 6).
+   * Optional extra fields (e.g. has_critical) are merged into the payload so backend can store AI summary flags.
    */
   updateApplicationStatus(
     appId: string | number,
     status: 'pending' | 'submitted' | 'completed',
+    extra?: Record<string, unknown>,
   ): Observable<unknown> {
     const base = environment.applicationsBaseUrl || '';
     const url = `${base}/applications/${appId}/application-status`;
-    return this.http.patch(url, { status }, { headers: { 'Content-Type': 'application/json' } });
+    const body: Record<string, unknown> = { status, ...(extra ?? {}) };
+    return this.http.patch(url, body, { headers: { 'Content-Type': 'application/json' } });
   }
 
   /**

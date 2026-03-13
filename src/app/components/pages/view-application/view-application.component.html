@@ -208,6 +208,19 @@
       </table>
     </div>
     }
+    @if (isOfficerApproved) {
+    <section class="screen6-section step5-permit-summary">
+      <h3 class="screen6-section-title">PERMIT SUMMARY</h3>
+      <dl class="screen6-details">
+        <dt>Zoning:</dt>
+        <dd>{{ record.zoningType ?? '—' }}</dd>
+        <dt>Proposed Built-up Area:</dt>
+        <dd>{{ record.proposedBuiltUpArea ?? '—' }}{{ record.proposedBuiltUpArea != null ? ' sq ft' : '' }}</dd>
+        <dt>No. of Floors:</dt>
+        <dd>{{ record.noOfFloors ?? '—' }}</dd>
+      </dl>
+    </section>
+    }
     <div class="form-actions">
       <button type="button" class="btn-secondary" (click)="returnToDashboard()">Return to Dashboard</button>
       <button type="button" class="btn-primary" (click)="goToNextStep()">Next</button>
@@ -232,6 +245,7 @@
         <dd>{{ record.status ?? '—' }}</dd>
       </dl>
     </section>
+    @if (isOfficerApproved) {
     <section class="screen6-section">
       <h3 class="screen6-section-title">PERMIT SUMMARY</h3>
       <dl class="screen6-details">
@@ -243,6 +257,7 @@
         <dd>{{ record.noOfFloors ?? '—' }}</dd>
       </dl>
     </section>
+    }
     <section class="screen6-section">
       <dl class="screen6-details">
         <dt>AI Feedback:</dt>

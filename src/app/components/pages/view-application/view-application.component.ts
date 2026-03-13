@@ -204,10 +204,12 @@ export class ViewApplicationComponent implements OnInit {
     this.router.navigate(['/dashboard']);
   }
 
-  /** True when the application has been approved by an inspector (inspector_status is approved). */
+  /** True when the application has been approved by an inspector (inspector_status or status/officer_decision is approve(d)). */
   get isOfficerApproved(): boolean {
-    const s = (this.record?.inspector_status ?? '').trim().toLowerCase();
-    return s === 'approved' || s === 'approve';
+    const inspector = (this.record?.inspector_status ?? '').trim().toLowerCase();
+    if (inspector === 'approved' || inspector === 'approve') return true;
+    const status = (this.record?.status ?? '').trim().toLowerCase();
+    return status === 'approved' || status === 'approve';
   }
 
   /** Infer permit city for PDF template: 'newyork' if address suggests NYC, else 'austin'. */
