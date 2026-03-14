@@ -45,6 +45,8 @@ export interface AdminRecord {
   siteImagesCount?: number;
   /** When true, AI Decision shows Critical Violation and Officer Decision shows NA; Decision section is disabled. */
   hasCritical?: boolean;
+  /** Issued permit number (e.g. ATX-2026-XXXX) when officer has approved; from API permit_id. */
+  issuedPermitId?: string;
 }
 
 @Component({
@@ -135,6 +137,8 @@ export class DashboardComponent implements OnInit {
   decisionConfirmed = signal<boolean>(false);
   decisionConfirmedChoice = signal<'approve' | 'reject' | 'revision' | null>(null);
   decisionConfirmedAt = signal<Date | null>(null);
+  /** Issued permit ID (e.g. ATX-2026-XXXX) when we just confirmed Approve; shown in Decision section. */
+  decisionConfirmedPermitId = signal<string | null>(null);
   /** Stored officer comment when confirming Request Revision (shown in REVISION DETAILS) */
   decisionRevisionComment = signal<string>('');
   decisionConfirmLoading = false;
@@ -214,6 +218,11 @@ export class DashboardComponent implements OnInit {
     const combinedStatus = officerDecision || workflow || '—';
     const officerDecidedAt = it.officer_decided_at ? String(it.officer_decided_at).trim() : undefined;
     const hasCritical = it.has_critical === true || it.has_critical === 1;
+    const od = officerDecision.toLowerCase();
+    const issuedPermitId =
+      (od === 'approve' || od === 'approved') && toStr(it.permit_id).trim()
+        ? toStr(it.permit_id).trim()
+        : undefined;
     return {
       permitId,
       applicationId,
@@ -232,6 +241,7 @@ export class DashboardComponent implements OnInit {
       blueprintFileName: it.blueprint_file_name ? toStr(it.blueprint_file_name) : undefined,
       siteImagesCount: it.site_images_count != null ? Number(it.site_images_count) : undefined,
       hasCritical,
+      issuedPermitId,
     };
   }
 
@@ -704,6 +714,7 @@ export class DashboardComponent implements OnInit {
         this.decisionConfirmed.set(true);
         this.decisionConfirmedChoice.set(choice);
         this.decisionConfirmedAt.set(new Date());
+        if (choice === 'approve' && permitId) this.decisionConfirmedPermitId.set(permitId);
         if (choice === 'revision' || choice === 'reject') {
           this.decisionRevisionComment.set(this.decisionComment || '');
         }
@@ -711,14 +722,25 @@ export class DashboardComponent implements OnInit {
         record.status = statusMap[choice];
         record.officerDecision = officerDecisionValue;
         record.officerDecidedAt = officerDecidedAt;
+        if (choice === 'approve' && permitId) record.issuedPermitId = permitId;
         const idx = this.adminRecords.findIndex((r) => r.permitId === record.permitId);
-        if (idx !== -1) this.adminRecords[idx] = { ...this.adminRecords[idx], status: record.status, officerDecision: officerDecisionValue, officerDecidedAt };
+        if (idx !== -1) this.adminRecords[idx] = { ...this.adminRecords[idx], status: record.status, officerDecision: officerDecisionValue, officerDecidedAt, issuedPermitId: choice === 'approve' ? permitId ?? undefined : this.adminRecords[idx].issuedPermitId };
       },
       error: (err: unknown) => {
         this.decisionConfirmLoading = false;
         this.decisionConfirmError = getUserFriendlyErrorMessage(err, 'Unable to submit decision. Please try again.');
       },
     });
+  }
+
+  /** Application ID (UUID) for display in Decision section. */
+  getDisplayApplicationId(record: AdminRecord): string {
+    return record.applicationId ?? record.permitId ?? '—';
+  }
+
+  /** Issued Permit ID for Approved records (from API or from just-confirmed decision). */
+  getDisplayPermitIdForApproved(record: AdminRecord): string {
+    return record.issuedPermitId ?? this.decisionConfirmedPermitId() ?? '—';
   }
 
   getDecisionConfirmedTimestamp(): string {

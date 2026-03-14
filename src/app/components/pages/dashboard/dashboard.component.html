@@ -180,7 +180,8 @@
                 @if (decisionConfirmed() && decisionConfirmedChoice() === 'approve') {
                   <div class="decision-confirmation-summary">
                     <div class="decision-confirmation-header">DECISION CONFIRMED</div>
-                    <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                    <div class="decision-confirmation-line">Application ID: <span class="decision-confirmation-permit-id">{{ getDisplayApplicationId(record) }}</span></div>
+                    <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ getDisplayPermitIdForApproved(record) }}</span></div>
                     <div class="decision-confirmation-line">Decision: Approved</div>
                     <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
                     <ul class="decision-confirmation-actions">
@@ -233,7 +234,8 @@
                   @if (getOfficerDecisionType(record) === 'approve') {
                     <div class="decision-confirmation-summary">
                       <div class="decision-confirmation-header">DECISION CONFIRMED</div>
-                      <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ record.permitId }}</span></div>
+                      <div class="decision-confirmation-line">Application ID: <span class="decision-confirmation-permit-id">{{ getDisplayApplicationId(record) }}</span></div>
+                      <div class="decision-confirmation-line">Permit ID: <span class="decision-confirmation-permit-id">{{ getDisplayPermitIdForApproved(record) }}</span></div>
                       <div class="decision-confirmation-line">Decision: Approved</div>
                       <div class="decision-confirmation-line">Timestamp: {{ getDecisionConfirmedTimestamp() || '—' }}</div>
                       <ul class="decision-confirmation-actions">
