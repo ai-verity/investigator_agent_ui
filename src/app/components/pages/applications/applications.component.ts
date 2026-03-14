@@ -392,8 +392,8 @@ export class ApplicationsComponent implements OnInit, OnDestroy, AfterViewChecke
         owner_name: (step1.fullName ?? '').toString(),
         project_address: (step1.address ?? '').toString(),
         zoning_type: (step2.zoningType ?? '').toString(),
-        // Step 2: initial state – treat as has_critical = true until AI review completes.
-        has_critical: true,
+        // has_critical is true only when findings have Critical severity; no findings yet at start.
+        has_critical: false,
       };
       this.startApplicationLoading = true;
       this.startApplicationError = '';
@@ -407,9 +407,9 @@ export class ApplicationsComponent implements OnInit, OnDestroy, AfterViewChecke
           this.startApplicationError = '';
           this.currentStep = 3;
           this.maxStepReached = Math.max(this.maxStepReached, 3);
-          // Step 2: mark status pending with has_critical = true.
+          // Step 2: no findings yet – has_critical only true when findings have Critical severity.
           this.applicationsApi
-            .updateApplicationStatus(this.applicationId, 'pending', { has_critical: true })
+            .updateApplicationStatus(this.applicationId, 'pending', { has_critical: false })
             .subscribe({ error: () => {} });
         },
         error: (err) => {
@@ -459,10 +459,10 @@ export class ApplicationsComponent implements OnInit, OnDestroy, AfterViewChecke
           this.reviewStreamError = '';
           this.currentStep = 4; // Move to Step 4 first, then start streaming
           this.maxStepReached = Math.max(this.maxStepReached, 4);
-          // Step 3: status submitted, still treat has_critical as true until AI completes.
-          this.applicationsApi
-            .updateApplicationStatus(this.applicationId, 'submitted', { has_critical: true })
-            .subscribe({ error: () => {} });
+            // Step 3: no findings yet – has_critical set only after AI review (Step 4 complete).
+            this.applicationsApi
+              .updateApplicationStatus(this.applicationId, 'submitted', { has_critical: false })
+              .subscribe({ error: () => {} });
           this.startReviewStream(); // Keeps running until stream ends; statuses update from events, then all set to Completed on complete
         },
         error: (err) => {
@@ -588,9 +588,9 @@ export class ApplicationsComponent implements OnInit, OnDestroy, AfterViewChecke
           };
         });
       }
-      // Step 4: AI review finished – mark has_critical as false so backend knows this application passed critical checks.
+      // Step 4: AI review finished – send actual has_critical from findings (true only if any severity is Critical).
       this.applicationsApi
-        .updateApplicationStatus(this.applicationId, 'submitted', { has_critical: true })
+        .updateApplicationStatus(this.applicationId, 'submitted', { has_critical: this.hasCriticalSeverity })
         .subscribe({ error: () => {} });
       return;
     }
@@ -832,10 +832,10 @@ export class ApplicationsComponent implements OnInit, OnDestroy, AfterViewChecke
     const num = Math.floor(1000 + Math.random() * 9000);
     this.submissionPermitId = `BLR-${year}-${num}`;
     this.maxStepReached = Math.max(this.maxStepReached, 6);
-    // Step 5/6: final submission – reinforce has_critical = false for backend.
+    // Step 5/6: final submission – has_critical only true when findings have Critical (Submit disabled when critical).
     this.applicationsApi
       .updateApplicationStatus(this.applicationId, 'completed', {
-        has_critical: false,
+        has_critical: this.hasCriticalSeverity,
       })
       .subscribe({ error: () => {} });
     this.goToStep(6);
