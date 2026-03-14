@@ -184,6 +184,20 @@ export class ViewApplicationComponent implements OnInit {
     return titles[step] ?? `Step ${step}`;
   }
 
+  /** Format status for display in View Application (e.g. approve → Approved, reject → Rejected). */
+  formatApplicationStatus(status: string | undefined): string {
+    const s = (status ?? '').trim();
+    if (!s) return '—';
+    const lower = s.toLowerCase();
+    if (lower === 'approve' || lower === 'approved') return 'Approved';
+    if (lower === 'reject' || lower === 'rejected') return 'Rejected';
+    if (lower === 'revision required' || lower === 'revision') return 'Revision Required';
+    if (lower === 'pending') return 'Pending';
+    if (lower === 'completed') return 'Completed';
+    if (lower === 'submitted') return 'Submitted';
+    return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  }
+
   goToStep(step: number): void {
     if (step >= 1 && step <= this.totalSteps && this.steps.includes(step)) {
       this.currentStep = step;

@@ -253,13 +253,17 @@ export class DashboardComponent implements OnInit {
             }
           }
         }
-        const toStr = (v: unknown) => (v === undefined || v === null ? '' : String(v));
+        const toStr = (v: unknown) => (v === undefined || v === null ? '' : String(v)).trim();
         this.permits = (items || []).map((it) => {
           // For user list, treat application_id as the primary Application ID.
           const rawId = it.application_id ?? it.app_id ?? it.permit_id;
           const applicationId = toStr(rawId) || '—';
-          // Prefer application_status so "pending" (not yet submitted) is used for Edit and label.
-          const status = toStr(it.officer_decision ?? it.application_status ?? it.status) || '—';
+          // Status: officer_decision first, then status, then application_status; never show empty.
+          const status =
+            toStr(it.officer_decision) ||
+            toStr(it.status) ||
+            toStr(it.application_status) ||
+            '—';
           return {
             permitId: applicationId,
             address: toStr(it.project_address ?? it.address) || '—',
@@ -856,12 +860,17 @@ export class DashboardComponent implements OnInit {
     return 'status-' + status.toLowerCase().replace(/\s+/g, '-');
   }
 
-  /** Format application status for user list. "pending" -> "Pending for Submission"; else capitalize words. */
+  /** Format application status for user list. Never return empty. Approve -> Approved; Reject -> Rejected; complete -> Completed; etc. */
   formatApplicationStatus(status: string): string {
-    if (!status) return '';
-    const s = status.trim().toLowerCase();
-    if (s === 'pending') return 'Pending for Submission';
-    return status
+    const s = (status ?? '').trim();
+    if (!s) return '—';
+    const lower = s.toLowerCase();
+    if (lower === 'pending') return 'Pending for Submission';
+    if (lower === 'approve' || lower === 'approved') return 'Approved';
+    if (lower === 'reject' || lower === 'rejected') return 'Rejected';
+    if (lower === 'complete' || lower === 'completed') return 'Completed';
+    if (lower === 'submitted') return 'Submitted';
+    return s
       .split(/\s+/)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
       .join(' ');
